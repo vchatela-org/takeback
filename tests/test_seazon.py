@@ -494,7 +494,10 @@ def test_the_anonymized_copy_still_imports_as_seazon(export, tmp_path_factory):
     assert importers.detect(out / "files").key == "seazon"
     anonymized = list(seazon.SeazonImporter().parse(out / "files"))
     assert len(by_type(anonymized, "seazon_order")) == 2
-    assert "Camille" not in (out / "files" / "seazon_user.json").read_text(encoding="utf-8")
+    # The names were replaced. Not "Camille is absent from the file": the stand-in is
+    # a French Faker name, and that can be a Camille too.
+    user = json.loads((out / "files" / "seazon_user.json").read_text(encoding="utf-8"))
+    assert user["first_name"] != USER["first_name"] and user["last_name"] != USER["last_name"]
     # Orders are still linked to their meals and ratings by the same order id.
     orders = {item.context for item in by_type(anonymized, "seazon_order")}
     assert orders and orders == {item.context for item in by_type(anonymized, "meal")}
