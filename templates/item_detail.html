@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{# A short content (a product name, a search query...) makes a better
+   heading than the item type; it then isn't repeated below. #}
+{% set content_as_heading = not item.title and item.content and item.content | length <= 120 and '\n' not in item.content %}
+{% set heading = item.title or (item.content if content_as_heading else (item.item_type | humanize)) %}
+{% block title %}{{ heading }}{% endblock %}
+
+{% set ip = platform(item.source) %}
+
+{% block content %}
+
+<nav aria-label="Fil d'Ariane">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/p/{{ ip.key }}">{{ ip.label }}</a></li>
+    {% if item.category %}
+    <li class="breadcrumb-item">
+      <a href="/browse?source={{ item.source }}&category={{ item.category | urlencode }}">{{ item.category | humanize }}</a>
+    </li>
+    {% endif %}
+    <li class="breadcrumb-item">
+      <a href="/browse?source={{ item.source }}&category={{ (item.category or '') | urlencode }}&item_type={{ item.item_type | urlencode }}">{{ item.item_type | humanize }}</a>
+    </li>
+  </ol>
+</nav>
+
+<div class="page-header">
+  <div class="d-flex align-items-start gap-3 min-w-0">
+    <span class="platform-icon sm mt-1" style="--platform-color: {{ ip.color }}"><i class="bi {{ ip.icon }}"></i></span>
+    <div class="min-w-0">
+      <h1 class="page-title text-break">{{ heading }}</h1>
+      <p class="page-subtitle">
+        {% if item.timestamp %}<i class="bi bi-clock me-1"></i>{{ item.timestamp | date_fr(True) }}{% endif %}
+        {% if item.author %}<span class="ms-3"><i class="bi bi-person me-1"></i>{{ item.author }}</span>{% endif %}
+        {% if item.context %}<span class="ms-3"><i class="bi bi-chat-square-text me-1"></i>{{ item.context }}</span>{% endif %}
+      </p>
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    {% if order_link %}
+    <a href="/browse?source={{ item.source }}&context={{ item.context | urlencode }}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-box-seam me-1"></i>Toute la commande
+    </a>
+    {% endif %}
+    <button type="button" onclick="history.length > 1 ? history.back() : (window.location = '/p/{{ ip.key }}')" class="btn btn-sm btn-ghost">
+      <i class="bi bi-arrow-left me-1"></i>Retour
+    </button>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-8">
+    {% if item.content and not content_as_heading %}
+    <div class="card mb-3">
+      <div class="card-body">
+        <p class="mb-0" style="white-space: pre-wrap;">{{ item.content }}</p>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if fields %}
+    <div class="card table-card mb-3">
+      <div class="card-body px-0 pb-1">
+        <h2 class="chart-title px-3 mb-2">Détails</h2>
+        <table class="table table-sm fields-table">
+          {% for k, v in fields.items() %}
+          <tr>
+            <td>{{ k }}</td>
+            <td class="text-break">
+              {% if v is string and (v.startswith('http://') or v.startswith('https://')) %}
+              <a href="{{ v }}" target="_blank" rel="noopener noreferrer">{{ v }} <i class="bi bi-box-arrow-up-right small"></i></a>
+              {% else %}{{ v }}{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if instagram_urls %}
+    <div class="card mb-3">
+      <div class="card-body">
+        <h2 class="chart-title mb-2"><i class="bi bi-instagram me-2"></i>Publication Instagram liée</h2>
+        {% for url in instagram_urls %}
+        <div class="mb-3">{% include "_instagram_preview.html" %}</div>
+        {% endfor %}
+        <p class="form-text mb-0">
+          Chargé à la demande uniquement : rien n'est envoyé à Instagram tant que vous ne cliquez
+          pas. Ne fonctionne que si la publication existe encore et est publique.
+        </p>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if item.media_files %}
+    <div class="row row-cols-1 row-cols-md-2 g-3 mb-3">
+      {% for media in item.media_files %}
+      <div class="col">
+        {% if media.media_type == 'photo' %}
+        <img src="/media/{{ item.batch_id }}/{{ media.relative_path }}" class="media-thumb w-100" alt="" />
+        {% elif media.media_type == 'video' %}
+        <video src="/media/{{ item.batch_id }}/{{ media.relative_path }}" class="w-100" controls></video>
+        {% elif media.media_type == 'audio' %}
+        <audio src="/media/{{ item.batch_id }}/{{ media.relative_path }}" class="w-100" controls></audio>
+        {% else %}
+        <a href="/media/{{ item.batch_id }}/{{ media.relative_path }}" target="_blank">
+          <i class="bi bi-file-earmark me-1"></i>{{ media.original_name }}
+        </a>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <details class="card">
+      <summary class="card-body py-2 small text-muted" style="cursor: pointer;">
+        <i class="bi bi-code-square me-2"></i>Données brutes
+      </summary>
+      <div class="card-body pt-0">
+        <pre class="raw-json p-2 rounded border mb-0">{{ item.raw_json }}</pre>
+      </div>
+    </details>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-body small">
+        <div class="small-caps mb-2">Provenance</div>
+        <div class="mb-1"><i class="bi bi-file-earmark-zip me-1 text-muted"></i>
+          <a href="/imports/{{ item.batch_id }}">{{ item.batch.original_filename }}</a>
+        </div>
+        {% if copies > 1 %}
+        <div class="text-muted">
+          <i class="bi bi-files me-1"></i>Présent dans {{ copies }} imports — compté une seule fois.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

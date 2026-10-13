@@ -1,0 +1,12 @@
+# The Dockerfile does `COPY . .` - keep local state and tooling out of the image.
+.git
+.github
+.env
+.venv
+venv
+__pycache__
+*.pyc
+*.egg-info
+data
+sample_data
+docker-compose.yml

@@ -1,0 +1,59 @@
+# Commit prefixes feed the release notes (release-please-config.json): a runtime
+# dependency ("deps") is listed under Dependencies and makes a patch release; a dev
+# dependency ("chore") or an Actions bump ("ci") stays out of the notes.
+version: 2
+
+updates:
+  # Python dependencies, from requirements.txt (direct pins, so Dependabot sees them).
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Paris
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - python
+    commit-message:
+      prefix: "deps"
+      prefix-development: "chore"
+
+  # Base image. The Dockerfile pins tag + digest; Dependabot updates both.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Paris
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - docker
+    # Stay on the current Python minor line: left unconstrained, Dependabot offers
+    # release candidates, which trades a supported runtime for an untested one
+    # without fixing any CVE. Bump tag + digest by hand when a new stable ships.
+    ignore:
+      - dependency-name: python
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+    commit-message:
+      prefix: "deps"
+
+  # Actions used by the workflows in this repo.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Paris
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: "ci"

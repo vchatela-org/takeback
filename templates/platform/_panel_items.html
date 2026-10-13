@@ -1,0 +1,49 @@
+{% if not items %}
+<div class="empty-state py-4">
+  <i class="bi bi-inbox"></i>
+  <p class="mt-2 mb-0">Aucun élément ici.</p>
+</div>
+{% else %}
+
+<div class="d-flex align-items-center justify-content-between mb-2">
+  <div class="small-caps">
+    {% if total > limit %}Les {{ limit }} plus récents sur {{ total | num }}{% else %}{{ total | num }} élément{% if total > 1 %}s{% endif %}{% endif %}
+  </div>
+  {% if open_url %}
+  <a href="{{ open_url }}" class="small">{{ open_label }} <i class="bi bi-arrow-right"></i></a>
+  {% elif browse_url %}
+  <a href="{{ browse_url }}" class="small">Ouvrir dans la recherche <i class="bi bi-box-arrow-up-right"></i></a>
+  {% endif %}
+</div>
+
+<div>
+  {% for item in items %}
+  {% set fields = items_fields.get(item.id, {}) %}
+  <a class="drill-item" href="/items/{{ item.id }}">
+    {% if item.media_files and item.media_files[0].media_type == 'photo' %}
+    <img src="/media/{{ item.batch_id }}/{{ item.media_files[0].relative_path }}" class="browse-thumb" loading="lazy" alt="" />
+    {% endif %}
+    <div class="drill-main">
+      <div class="drill-text">
+        {% if item.title and not (item.content and item.title in item.content) %}<strong>{{ item.title }}</strong>{% if item.content %} — {% endif %}{% endif %}
+        {% if item.content %}{{ item.content[:240] }}
+          {#- Content that only names its group (a Kindle session is its book's title): what tells the items apart. #}
+          {% if item.content == item.context and fields %}
+          {% set details = fields.items() | rejectattr(0, 'in', ['ASIN', 'Lien', 'Document']) | list %}
+          {% if details %}<span class="text-muted"> — {% for k, v in details[:2] %}{{ k }} : {{ (v | string)[:60] }}{% if not loop.last %} · {% endif %}{% endfor %}</span>{% endif %}
+          {% endif %}
+        {% elif not item.title and fields %}
+          {% for k, v in fields.items() | list %}{% if loop.index <= 2 %}<span class="text-muted">{{ k }} :</span> {{ (v | string)[:60] }}{% if not loop.last and loop.index < 2 %} · {% endif %}{% endif %}{% endfor %}
+        {% endif %}
+      </div>
+      <div class="drill-meta">
+        <span class="type-badge">{{ item.item_type | humanize }}</span>
+        {% if item.author %} · {{ item.author }}{% endif %}
+        {% if item.context and item.context not in (item.author, item.content) %} · {{ item.context }}{% endif %}
+      </div>
+    </div>
+    <div class="drill-meta text-nowrap">{{ item.timestamp | date_fr(True) }}</div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}

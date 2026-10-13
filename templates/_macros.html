@@ -1,0 +1,235 @@
+{# Shared building blocks of the dashboard pages. #}
+
+{# One filter row above everything it scopes: period first (one chip per
+   year that has data, the main preset when an export is imported every
+   year), then a custom range, then whatever the page adds via caller(),
+   then the "include 1970" switch when the platform has such dates. #}
+{% macro filter_bar(request, date_from, date_to, years, granularity=None, undated=None) -%}
+<form method="get" action="{{ request.url.path }}" class="filter-bar">
+  <div class="chip-row" role="group" aria-label="Période">
+    <a class="chip {% if not date_from and not date_to %}active{% endif %}"
+       href="{{ url_with(request, date_from=None, date_to=None, page=None) }}">Tout</a>
+    {% for y in years %}
+    {% set y_from = y ~ '-01-01' %}{% set y_to = y ~ '-12-31' %}
+    <a class="chip {% if date_from == y_from and date_to == y_to %}active{% endif %}"
+       href="{{ url_with(request, date_from=y_from, date_to=y_to, page=None) }}">{{ y }}</a>
+    {% endfor %}
+  </div>
+  <div class="range-inputs">
+    <input type="date" name="date_from" value="{{ date_from[:10] }}" class="form-control form-control-sm" aria-label="Du" />
+    <span class="text-muted">→</span>
+    <input type="date" name="date_to" value="{{ date_to[:10] }}" class="form-control form-control-sm" aria-label="Au" />
+  </div>
+  {% if granularity %}
+  <select name="granularity" class="form-select form-select-sm" aria-label="Précision" data-auto-submit>
+    {% for key, label in [('day', 'Par jour'), ('week', 'Par semaine'), ('month', 'Par mois'), ('year', 'Par an'), ('hour', 'Par heure')] %}
+    <option value="{{ key }}" {% if granularity == key %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  {% if caller %}{{ caller() }}{% endif %}
+  {{ undated_toggle(undated) }}
+  <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel me-1"></i>Appliquer</button>
+</form>
+{%- endmacro %}
+
+{# Exports write a missing date as 01/01/1970 (crud.NO_DATE_BEFORE): those
+   items stay out of the charts unless this is on. Shown only when the
+   platform has any. #}
+{% macro undated_toggle(undated) -%}
+{% if undated and undated.count %}
+<div class="form-check form-switch mb-0 small">
+  <input class="form-check-input" type="checkbox" role="switch" name="include_1970" value="1" id="include1970"
+         data-auto-submit {% if undated.included %}checked{% endif %}>
+  <label class="form-check-label" for="include1970">
+    Inclure 1970 <span class="text-muted">({{ undated.count | num }} sans date)</span>
+    <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip"
+       title="Faute de date, les exports indiquent le 01/01/1970. Ces éléments restent comptés et consultables, mais hors des graphiques et des périodes, sauf si vous les incluez."></i>
+  </label>
+</div>
+{% endif %}
+{%- endmacro %}
+
+{# A multi-select of a filter form, every box ticked by default -- all
+   ticked means no filter, and static/app.js then leaves the boxes out of
+   the query string. options: [{value, label, count}]; `noun` counts them
+   in the button ("3 catégories sur 12"). #}
+{% macro multi_select(request, name, options, selected, all_label, icon, noun) -%}
+{% set kept = (options | selectattr('value', 'in', selected) | list) if selected else options %}
+{% set left_out = options | rejectattr('value', 'in', selected) | list if selected else [] %}
+{% if not selected %}{% set summary = all_label %}
+{% elif kept | length == 1 %}{% set summary = kept[0].label %}
+{% elif left_out | length == 1 %}{% set summary = "Tout sauf " ~ left_out[0].label %}
+{% else %}{% set summary = (kept | length) ~ " " ~ noun ~ " sur " ~ (options | length) %}
+{% endif %}
+<div class="dropdown tb-multi" data-persist="{{ name }}:{{ request.path_params.get('source', '') }}">
+  <button class="btn btn-sm {{ 'btn-outline-primary' if selected else 'btn-outline-secondary' }} dropdown-toggle" type="button"
+          data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+    <i class="bi {{ icon }} me-1"></i>{{ summary }}
+  </button>
+  <div class="dropdown-menu p-2 multi-menu">
+    <div class="d-flex gap-3 px-2 pb-2 mb-1 border-bottom small">
+      <button type="button" class="btn btn-link btn-sm p-0" data-multi="all">Tout cocher</button>
+      <button type="button" class="btn btn-link btn-sm p-0" data-multi="none">Tout décocher</button>
+    </div>
+    <div class="multi-options">
+      {% for o in options %}
+      <label class="dropdown-item d-flex align-items-center gap-2 rounded">
+        <input type="checkbox" name="{{ name }}" value="{{ o.value }}" class="form-check-input mt-0"
+               {% if not selected or o.value in selected %}checked{% endif %}>
+        {% if o.slot is defined %}<i class="slot-dot" style="--slot: var(--tb-slot-{{ o.slot }})" aria-hidden="true"></i>{% endif %}
+        <span class="me-auto text-truncate">{{ o.label }}</span>
+        <span class="small text-muted num">{{ o.count | num }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="px-2 pt-2 mt-1 border-top">
+      <button type="submit" class="btn btn-sm btn-primary w-100">Appliquer</button>
+    </div>
+  </div>
+</div>
+{% if selected %}
+<a class="chip" data-forget="{{ name }}:{{ request.path_params.get('source', '') }}" href="{{ url_with(request, **{name: None, 'page': None}) }}"><i class="bi bi-x"></i>{{ all_label }}</a>
+{% endif %}
+{%- endmacro %}
+
+{% macro kpi(label, value, sub=None, icon=None, tooltip=None, value_id=None) -%}
+<div class="card kpi">
+  <div class="card-body">
+    <div class="kpi-label">
+      {% if icon %}<i class="bi {{ icon }} kpi-icon"></i>{% endif %}{{ label }}
+      {% if tooltip %}<i class="bi bi-info-circle kpi-icon" data-bs-toggle="tooltip" title="{{ tooltip }}"></i>{% endif %}
+    </div>
+    <div class="kpi-value" {% if value_id %}id="{{ value_id }}"{% endif %}>{{ value }}</div>
+    {% if sub %}<div class="kpi-sub">{{ sub }}</div>{% endif %}
+    {% if caller %}{{ caller() }}{% endif %}
+  </div>
+</div>
+{%- endmacro %}
+
+{# Chart card: title, optional hint, "show values" switch, table-view
+   toggle (the same numbers without hovering or telling colours apart). #}
+{% macro chart_card(id, title, hint=None, height=320, values_toggle=False, values_on=False) -%}
+<div class="card chart-card h-100">
+  <div class="card-body">
+    <div class="chart-head">
+      <div>
+        <h2 class="chart-title">{{ title }}</h2>
+        {% if hint %}<p class="chart-hint">{{ hint }}</p>{% endif %}
+      </div>
+      <div class="chart-tools">
+        {% if values_toggle %}
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="{{ id }}Values" data-tb-values="{{ id }}" {% if values_on %}checked{% endif %}>
+          <label class="form-check-label" for="{{ id }}Values">Valeurs</label>
+        </div>
+        {% endif %}
+        <button type="button" class="btn btn-sm btn-ghost" data-tb-table="{{ id }}" aria-pressed="false" title="Afficher les données en tableau">
+          <i class="bi bi-table me-1"></i>Tableau
+        </button>
+      </div>
+    </div>
+    <div class="chart-box" style="height: {{ height }}px;"><canvas id="{{ id }}" role="img" aria-label="{{ title }}"></canvas></div>
+  </div>
+</div>
+{%- endmacro %}
+
+{# Weekday x hour heatmap card: one hue, opacity carries the count. A cell
+   opens what it counts in the side panel (drill_path with weekday/hour,
+   plus drill_params, added to the current filters); caller() adds a
+   footnote. #}
+{% macro heatmap_card(request, title, hint, grid, grid_max, weekday_names, drill_path, unit, drill_params={}) -%}
+<div class="card chart-card h-100">
+  <div class="card-body">
+    <div class="chart-head">
+      <div>
+        <h2 class="chart-title">{{ title }}</h2>
+        <p class="chart-hint">{{ hint }}</p>
+      </div>
+      <div class="heatmap-legend small text-muted" aria-hidden="true">
+        0 {% for v in [0.08, 0.25, 0.45, 0.7, 1] %}<span style="--v: {{ v }}"></span>{% endfor %} {{ grid_max | num }}
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="heatmap-table">
+        <thead>
+          <tr>
+            <th></th>
+            {% for h in range(24) %}<th class="text-center">{{ h }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for day_row in grid %}
+          {% set weekday = loop.index0 %}
+          {% set day_name = weekday_names[weekday] %}
+          <tr>
+            <th class="text-nowrap">{{ day_name }}</th>
+            {% for count in day_row %}
+            {% set label = day_name ~ " " ~ loop.index0 ~ "h–" ~ (loop.index0 + 1) ~ "h" %}
+            <td class="heatmap-cell" role="button" tabindex="0"
+                style="--v: {{ ((count / grid_max) | round(3)) if grid_max else 0 }};"
+                title="{{ label }} : {{ count | num }}" aria-label="{{ label }} : {{ count }} {{ unit }}"
+                data-drill-url="{{ url_with(request, drill_path, weekday=weekday, hour=loop.index0, granularity=None, **drill_params) }}"
+                data-drill-title="{{ label }}" data-drill-subtitle="{{ count | num }} {{ unit }} sur la période"></td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if caller %}{{ caller() }}{% endif %}
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro pagination(request, page, page_count) -%}
+{% if page_count > 1 %}
+<nav class="mt-3" aria-label="Pagination">
+  <ul class="pagination pagination-sm justify-content-center mb-0">
+    <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+      <a class="page-link" href="{{ url_with(request, page=page - 1) }}" aria-label="Précédent"><i class="bi bi-chevron-left"></i></a>
+    </li>
+    {% set ns = namespace(gap=false) %}
+    {% for p in range(1, page_count + 1) %}
+      {% if p == 1 or p == page_count or (p - page)|abs <= 2 %}
+      {% set ns.gap = false %}
+      <li class="page-item {% if p == page %}active{% endif %}"><a class="page-link" href="{{ url_with(request, page=p) }}">{{ p }}</a></li>
+      {% elif not ns.gap %}
+      {% set ns.gap = true %}
+      <li class="page-item disabled"><span class="page-link">…</span></li>
+      {% endif %}
+    {% endfor %}
+    <li class="page-item {% if page >= page_count %}disabled{% endif %}">
+      <a class="page-link" href="{{ url_with(request, page=page + 1) }}" aria-label="Suivant"><i class="bi bi-chevron-right"></i></a>
+    </li>
+  </ul>
+</nav>
+{% endif %}
+{%- endmacro %}
+
+{% macro sort_header(request, field, label, sort, direction, align='') -%}
+{% set next_direction = 'asc' if (sort == field and direction == 'desc') else 'desc' %}
+<th class="{{ align }}" {% if sort == field %}aria-sort="{{ 'ascending' if direction == 'asc' else 'descending' }}"{% endif %}>
+  <a class="sort-link" href="{{ url_with(request, sort=field, direction=next_direction, page=None) }}">
+    {{ label }}{% if sort == field %} <i class="bi bi-caret-{{ 'up' if direction == 'asc' else 'down' }}-fill small"></i>{% endif %}
+  </a>
+</th>
+{%- endmacro %}
+
+{# Sync run status (app/scheduler.py): label + icon, never colour alone. #}
+{% macro sync_badge(status) -%}
+{% if status == 'ok' %}<span class="badge text-bg-success"><i class="bi bi-check2 me-1"></i>OK</span>
+{% elif status == 'error' %}<span class="badge text-bg-danger"><i class="bi bi-x-octagon me-1"></i>Erreur</span>
+{% else %}<span class="badge text-bg-info"><span class="spinner-border spinner-border-sm me-1" style="width: .7rem; height: .7rem;"></span>En cours</span>
+{% endif %}
+{%- endmacro %}
+
+{# Import status: label + icon, never colour alone. #}
+{% macro status_badge(status) -%}
+{% set s = status.value if status.value is defined else status %}
+{% if s == 'done' %}<span class="badge text-bg-success"><i class="bi bi-check2 me-1"></i>Terminé</span>
+{% elif s == 'error' %}<span class="badge text-bg-danger"><i class="bi bi-x-octagon me-1"></i>Erreur</span>
+{% elif s == 'unrecognized' %}<span class="badge text-bg-warning"><i class="bi bi-question-circle me-1"></i>Non reconnu</span>
+{% else %}<span class="badge text-bg-info"><span class="spinner-border spinner-border-sm me-1" style="width: .7rem; height: .7rem;"></span>{{ {'pending': 'En attente', 'extracting': 'Extraction', 'parsing': 'Analyse'}.get(s, s) }}</span>
+{% endif %}
+{%- endmacro %}

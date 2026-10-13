@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Accueil{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Vos données</h1>
+    <p class="page-subtitle">
+      {% if total_items %}
+      {{ total_items | num }} éléments, par plateforme. Chaque nouvel export complète l'historique
+      de sa plateforme : ce qui était déjà importé n'est jamais compté deux fois.
+      {% else %}
+      Importez l'export d'une plateforme pour commencer.
+      {% endif %}
+    </p>
+  </div>
+  <a href="/imports" class="btn btn-primary">
+    <i class="bi bi-cloud-arrow-up me-1"></i>Importer un export
+  </a>
+</div>
+
+{% if in_progress %}
+<div class="card mb-4">
+  <div class="card-body py-2">
+    {% for batch in in_progress %}
+    <div class="d-flex align-items-center gap-3 py-1">
+      {{ m.status_badge(batch.status) }}
+      <a href="/imports/{{ batch.id }}" class="text-truncate">{{ batch.original_filename }}</a>
+      <span class="text-muted small ms-auto">démarré le {{ batch.created_at | date_fr(True) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="row row-cols-1 row-cols-md-2 row-cols-xxl-4 g-3 mb-4">
+  {% for card in cards %}
+  {% set p = card.platform %}
+  {% set s = card.summary %}
+  {% set has_data = s and s.count %}
+  <div class="col">
+    <div class="card platform-card {% if not has_data %}is-empty{% endif %}" style="--platform-color: {{ p.color }}">
+      <div class="card-body d-flex flex-column">
+        <div class="d-flex align-items-center gap-3 mb-3">
+          <span class="platform-icon"><i class="bi {{ p.icon }}"></i></span>
+          <div class="min-w-0">
+            <h2 class="h5 mb-0">
+              <a href="/p/{{ p.key }}" class="stretched-link text-reset text-decoration-none">{{ p.label }}</a>
+            </h2>
+            <div class="small text-muted">{{ period(s.first, s.last) if has_data else "Pas encore importé" }}</div>
+          </div>
+        </div>
+
+        {% if has_data %}
+        <div class="d-flex gap-4 mb-2">
+          <div>
+            <div class="platform-stat">{{ s.count | num }}</div>
+            <div class="small text-muted">éléments</div>
+          </div>
+          <div>
+            <div class="platform-stat">{{ s.imports }}</div>
+            <div class="small text-muted">import{% if s.imports > 1 %}s{% endif %}</div>
+          </div>
+        </div>
+        <div class="small text-muted mb-3">Dernier import le {{ s.last_import | date_fr }}</div>
+        <div class="card-links chip-row mt-auto">
+          {% for v in card.views %}
+          <a class="chip" href="/p/{{ p.key }}{{ v.path }}"><i class="bi {{ v.icon }}"></i>{{ view_label(v) }}</a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="small text-muted mb-3">
+          {% if p.export_hint %}Où demander l'export : {{ export_hint(p) }}.{% endif %}
+        </p>
+        <div class="card-links mt-auto">
+          <a href="/imports" class="btn btn-sm btn-outline-primary"><i class="bi bi-cloud-arrow-up me-1"></i>Importer</a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  {% for p in planned %}
+  <div class="col">
+    <div class="card platform-card is-planned" aria-disabled="true" style="--platform-color: {{ p.color }}">
+      <div class="card-body d-flex flex-column">
+        <div class="d-flex align-items-center gap-3 mb-3">
+          <span class="platform-icon"><i class="bi {{ p.icon }}"></i></span>
+          <div class="min-w-0">
+            <h2 class="h5 mb-0">{{ p.label }}</h2>
+            <div class="small text-muted">Bientôt disponible</div>
+          </div>
+        </div>
+        <p class="small text-muted mb-3">
+          Import en préparation.
+          {% if p.export_hint %}Où demander l'export : {{ export_hint(p) }}.{% endif %}
+        </p>
+        <div class="card-links mt-auto">
+          <span class="planned-badge"><i class="bi bi-hourglass-split me-1"></i>Bientôt</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if recent_batches %}
+<div class="card table-card">
+  <div class="card-body px-0 pb-1">
+    <div class="d-flex align-items-center justify-content-between px-3 mb-2">
+      <h2 class="chart-title">Derniers imports</h2>
+      <a href="/imports" class="small">Tous les imports <i class="bi bi-arrow-right"></i></a>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <tbody>
+          {% for batch in recent_batches %}
+          {% set bp = platform(batch.source) if batch.source else None %}
+          <tr>
+            <td style="width: 2.5rem;">
+              {% if bp %}<i class="bi {{ bp.icon }}" style="color: {{ bp.color }}"></i>{% else %}<i class="bi bi-file-earmark-zip text-muted"></i>{% endif %}
+            </td>
+            <td class="text-truncate" style="max-width: 420px;"><a href="/imports/{{ batch.id }}">{{ batch.original_filename }}</a></td>
+            <td>{{ m.status_badge(batch.status) }}</td>
+            <td class="num">{{ batch.item_count | num }} éléments</td>
+            <td class="num text-muted small">{{ batch.created_at | date_fr(True) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

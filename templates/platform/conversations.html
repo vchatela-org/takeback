@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Conversations — {{ platform.label }}{% endblock %}
+
+{% block content %}
+{% include "platform/_header.html" %}
+
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-body p-2">
+        <input type="search" class="form-control form-control-sm mb-2" placeholder="Filtrer les conversations…"
+               data-filter-target="#threadList" aria-label="Filtrer les conversations" />
+        <div class="small text-muted px-1 mb-1">{{ threads | length }} conversation(s)</div>
+        <div class="list-group list-group-flush thread-list" id="threadList">
+          {% for thread in threads %}
+          {% set ctx = thread.context or "" %}
+          <a href="/p/{{ platform.key }}/conversations?context={{ ctx | urlencode }}"
+             data-filter-text="{{ thread.context or '' }}"
+             class="list-group-item list-group-item-action rounded {% if selected_context == thread.context %}active{% endif %}">
+            <div class="d-flex justify-content-between align-items-center gap-2">
+              <strong class="text-truncate">{{ thread.context or "(sans titre)" }}</strong>
+              <span class="small text-muted text-nowrap">{{ thread.count | num }}</span>
+            </div>
+            {% if thread.last_message %}
+            <div class="small text-truncate text-muted">
+              {{ thread.last_message.author }} : {{ thread.last_message.content or "[média]" }}
+            </div>
+            {% endif %}
+            {% if thread.last_timestamp %}
+            <div class="small text-muted">{{ thread.last_timestamp | date_fr(True) }}</div>
+            {% endif %}
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-8">
+    {% if selected_context is none %}
+    <div class="card h-100">
+      <div class="card-body empty-state">
+        <i class="bi bi-chat-square-text"></i>
+        <p class="mt-2 mb-0">Sélectionnez une conversation.</p>
+      </div>
+    </div>
+    {% else %}
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <h2 class="h6 mb-0 text-truncate">{{ selected_context or "(sans titre)" }}</h2>
+      <a class="small" href="/browse?source={{ platform.key }}&item_type=message&context={{ (selected_context or '') | urlencode }}">
+        <i class="bi bi-search me-1"></i>Rechercher dans cette conversation
+      </a>
+    </div>
+    <div class="chat-window" id="chat-window">
+      {% include "platform/_message_page.html" %}
+    </div>
+    <script>
+      (function () {
+        var win = document.getElementById('chat-window');
+        if (win) { win.scrollTop = win.scrollHeight; }
+        document.body.addEventListener('htmx:afterSwap', function (evt) {
+          if (window.__chatPriorHeight !== undefined && win && win.contains(evt.target)) {
+            win.scrollTop = win.scrollHeight - window.__chatPriorHeight;
+            window.__chatPriorHeight = undefined;
+          }
+        });
+      })();
+    </script>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

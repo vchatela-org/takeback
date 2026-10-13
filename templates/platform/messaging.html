@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Messagerie — {{ platform.label }}{% endblock %}
+
+{% set d = dashboard %}
+
+{% block content %}
+{% include "platform/_header.html" %}
+
+{% call m.filter_bar(request, date_from, date_to, years, granularity, undated) %}
+  <select name="threads" class="form-select form-select-sm" aria-label="Conversations" data-auto-submit>
+    <option value="">Toutes les conversations</option>
+    {% for key, label in thread_kinds.items() %}
+    <option value="{{ key }}" {% if thread_kind == key %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+{% endcall %}
+
+{% if d.total_sent + d.total_received == 0 %}
+<div class="card">
+  <div class="card-body empty-state">
+    <i class="bi bi-chat-square-text"></i>
+    <p class="mt-2 mb-0">Aucun message sur cette période{% if thread_kind %} dans les {{ thread_kinds[thread_kind] | lower }}{% endif %}.</p>
+  </div>
+</div>
+{% else %}
+
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+  <div class="col">{{ m.kpi("Messages", (d.total_sent + d.total_received) | num,
+                            sub=(d.total_sent | num) ~ " envoyés · " ~ (d.total_received | num) ~ " reçus", icon="bi-chat-square-text",
+                            tooltip=("Envoyés : écrits par " ~ me ~ ", le participant présent dans le plus de conversations — déduit des données, pas indiqué par l'export.") if me else None) }}</div>
+  <div class="col">{{ m.kpi("Conversations", d.total_threads | num,
+                            sub=(d.new_threads | num) ~ " nouvelle(s) · " ~ (d.group_threads | num) ~ " de groupe", icon="bi-chat-dots",
+                            tooltip="Conversations avec au moins un message sur la période. Nouvelle : son premier message tombe dans la période. De groupe : plus de deux personnes y ont écrit.") }}</div>
+  <div class="col">{{ m.kpi("Contacts", d.contacts | num, sub="personnes qui vous ont écrit", icon="bi-people") }}</div>
+  <div class="col">{{ m.kpi("Votre délai de réponse", reply_median_sent,
+                            sub="médian · vos contacts : " ~ reply_median_received, icon="bi-reply",
+                            tooltip="Temps entre le dernier message d'un contact et votre réponse dans la même conversation (médiane). Seules les réponses dans les " ~ reply_window_hours ~ " h comptent : au-delà, la conversation reprend plutôt qu'on y répond.") }}</div>
+</div>
+
+<div class="mb-4">
+  {{ m.chart_card("messagesChart", "Messages envoyés et reçus",
+                  hint="Cliquez sur une barre pour voir les conversations de la période, puis leurs messages.", height=320, values_toggle=True) }}
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-xl-6">
+    {% set top_height = [260, (d.top_threads.labels | length) * 30 + 70] | max %}
+    {{ m.chart_card("topThreadsChart", "Conversations les plus actives",
+                    hint="Messages sur la période. Cliquez sur une barre pour les voir, puis ouvrir la conversation.",
+                    height=top_height, values_toggle=True, values_on=True) }}
+  </div>
+  <div class="col-xl-6">
+    {{ m.chart_card("threadsChart", "Conversations actives",
+                    hint="Conversations avec au moins un message, dont celles qui commencent. Cliquez sur « Nouvelles » pour voir leur premier message.",
+                    height=top_height) }}
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-xxl-4">
+    {% if d.reply_counts.sent or d.reply_counts.received %}
+    {{ m.chart_card("replyChart", "Délai de réponse",
+                    hint="Part des réponses par délai : " ~ (d.reply_counts.sent | num) ~ " de votre part, "
+                         ~ (d.reply_counts.received | num) ~ " de vos contacts. Cliquez sur une barre pour les voir.",
+                    height=340) }}
+    {% else %}
+    <div class="card chart-card h-100">
+      <div class="card-body">
+        <h2 class="chart-title">Délai de réponse</h2>
+        <p class="chart-hint mb-0">Aucun échange sur cette période.</p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <div class="col-xxl-8">
+    {% if me %}
+    {{ m.heatmap_card(request, "Quand vous écrivez",
+                      "Messages envoyés par jour de la semaine et heure. Cliquez sur une case pour les voir.",
+                      d.heatmap, d.heatmap_max, weekday_names, '/p/' ~ platform.key ~ '/messaging/panel',
+                      "messages envoyés", {"direction": "sent"}) }}
+    {% endif %}
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/chart.umd.min.js"></script>
+<script>
+(function () {
+  var d = {{ dashboard | tojson }};
+  var source = {{ platform.key | tojson }};
+  var period = { date_from: {{ date_from | tojson }}, date_to: {{ date_to | tojson }},
+                 threads: {{ thread_kind | tojson }}, include_1970: {{ (1 if undated.included else none) | tojson }},
+                 granularity: {{ granularity | tojson }} };
+  var periodLabel = {{ (date_from[:4] if date_from and date_from[:4] == date_to[:4] else ('Toute la période' if not date_from and not date_to else (date_from[:10] ~ ' → ' ~ date_to[:10]))) | tojson }};
+
+  function messagesPanel(params, title, subtitle) {
+    var query = Object.assign({}, period);
+    Object.keys(params).forEach(function (key) { query[key] = params[key]; });
+    return { url: TB.url('/p/' + source + '/messaging/panel', query), title: title, subtitle: subtitle };
+  }
+  function lower(series) { return series ? series.label.toLowerCase() : ''; }
+
+  TB.bar('messagesChart', {
+    labels: d.labels, series: d.series, stacked: true, kind: 'number',
+    // Dragging across months re-opens this page on that span, kept otherwise.
+    select: function (first, last) {
+      return TB.url(window.location.pathname, Object.assign({}, period, {
+        date_from: d.ranges[first][0], date_to: d.ranges[last][1],
+      }));
+    },
+    drill: function (index, series) {
+      var range = d.ranges[index];
+      return messagesPanel({ overview: 1, direction: series ? series.keys[0] : null, date_from: range[0], date_to: range[1] },
+                           series ? 'Conversations · ' + lower(series) : 'Conversations', d.labels[index]);
+    },
+  });
+
+  var top = d.top_threads;
+  TB.bar('topThreadsChart', {
+    labels: top.labels, series: top.series, stacked: true, horizontal: true, kind: 'number',
+    showValues: true, axisLabel: 'Conversation',
+    drill: function (index, series) {
+      return messagesPanel({ context: top.contexts[index], direction: series ? series.keys[0] : null },
+                           top.labels[index], (series ? 'Messages ' + lower(series) + ' · ' : '') + periodLabel);
+    },
+  });
+
+  TB.bar('threadsChart', {
+    labels: d.labels, series: d.thread_series, stacked: true, kind: 'number',
+    drill: function (index, series) {
+      var range = d.ranges[index];
+      if (series && series.keys[0] === 'new') {
+        return messagesPanel({ new_threads: 1, date_from: range[0], date_to: range[1] },
+                             'Nouvelles conversations', 'Premier message · ' + d.labels[index]);
+      }
+      return messagesPanel({ date_from: range[0], date_to: range[1] }, 'Messages', d.labels[index]);
+    },
+  });
+
+  TB.bar('replyChart', {
+    labels: d.reply_labels, series: d.reply_series, horizontal: true, kind: 'percent', axisLabel: 'Délai',
+    drill: function (index, series) {
+      return messagesPanel({ reply_band: index, direction: series ? series.keys[0] : null },
+                           'Réponses en ' + d.reply_labels[index], (series ? series.label + ' · ' : '') + periodLabel);
+    },
+  });
+})();
+</script>
+{% endblock %}

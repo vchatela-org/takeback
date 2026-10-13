@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Recherche{% endblock %}
+
+{% set sp = platform(filters.source) if filters.source else None %}
+
+{% block content %}
+
+<nav aria-label="Fil d'Ariane">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/">Accueil</a></li>
+    {% if batch %}
+    <li class="breadcrumb-item"><a href="/imports">Imports</a></li>
+    <li class="breadcrumb-item"><a href="/imports/{{ batch.id }}">{{ batch.original_filename }}</a></li>
+    {% elif sp %}
+    <li class="breadcrumb-item"><a href="/p/{{ sp.key }}">{{ sp.label }}</a></li>
+    {% if filters.category %}<li class="breadcrumb-item">{{ filters.category | humanize }}</li>{% endif %}
+    {% endif %}
+    <li class="breadcrumb-item active" aria-current="page">Recherche</li>
+  </ol>
+</nav>
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">
+      {% if filters.item_type %}{{ filters.item_type | humanize }}{% elif filters.category %}{{ filters.category | humanize }}{% else %}Recherche{% endif %}
+    </h1>
+    <p class="page-subtitle">
+      {{ total | num }} résultat{% if total > 1 %}s{% endif %}
+      {% if batch %}dans cet import uniquement{% elif sp %}dans {{ sp.label }}, tous imports confondus{% else %}sur toutes les plateformes{% endif %}
+    </p>
+  </div>
+</div>
+
+<form method="get" action="/browse" class="filter-bar">
+  <input type="search" name="q" value="{{ filters.q }}" class="form-control form-control-sm"
+         placeholder="Rechercher dans le texte…" aria-label="Texte" style="min-width: 16rem; flex: 1 1 16rem;" />
+  {% if not batch %}
+  <select name="source" class="form-select form-select-sm" aria-label="Plateforme" data-auto-submit>
+    <option value="">Toutes les plateformes</option>
+    {% for s in sources %}
+    <option value="{{ s }}" {% if filters.source == s %}selected{% endif %}>{{ platform(s).label }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  <select name="category" class="form-select form-select-sm" aria-label="Catégorie" style="max-width: 15rem;" data-auto-submit>
+    <option value="">Toutes les catégories</option>
+    {% for c in categories %}
+    <option value="{{ c }}" {% if filters.category == c %}selected{% endif %}>{{ c | humanize }}</option>
+    {% endfor %}
+  </select>
+  <select name="item_type" class="form-select form-select-sm" aria-label="Type" style="max-width: 15rem;" data-auto-submit>
+    <option value="">Tous les types</option>
+    {% for t in item_types %}
+    <option value="{{ t }}" {% if filters.item_type == t %}selected{% endif %}>{{ t | humanize }}</option>
+    {% endfor %}
+  </select>
+  <div class="range-inputs">
+    <input type="date" name="date_from" value="{{ filters.date_from[:10] }}" class="form-control form-control-sm" aria-label="Du" />
+    <span class="text-muted">→</span>
+    <input type="date" name="date_to" value="{{ filters.date_to[:10] }}" class="form-control form-control-sm" aria-label="Au" />
+  </div>
+  {% if filters.batch_id %}<input type="hidden" name="batch_id" value="{{ filters.batch_id }}" />{% endif %}
+  {% if filters.context %}<input type="hidden" name="context" value="{{ filters.context }}" />{% endif %}
+  {% if sort %}<input type="hidden" name="sort" value="{{ sort }}" />{% endif %}
+  {% if direction %}<input type="hidden" name="direction" value="{{ direction }}" />{% endif %}
+  {% if dynamic and available_columns %}
+  <div class="dropdown">
+    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+            data-bs-toggle="dropdown" data-bs-auto-close="outside">
+      <i class="bi bi-layout-three-columns me-1"></i>Colonnes ({{ field_columns | length }}/{{ available_columns | length }})
+    </button>
+    <ul class="dropdown-menu p-2" style="max-height: 320px; overflow-y: auto; min-width: 240px;">
+      {% for col in available_columns %}
+      <li>
+        <label class="dropdown-item d-flex align-items-center gap-2 rounded">
+          <input type="checkbox" name="cols" value="{{ col }}" class="form-check-input mt-0"
+                 {% if col in field_columns %}checked{% endif %}>{{ col }}
+        </label>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Filtrer</button>
+  {% if filters.source or filters.category or filters.item_type or filters.q or filters.batch_id or filters.context or filters.date_from or filters.date_to %}
+  <a href="/browse" class="btn btn-ghost btn-sm"><i class="bi bi-x-circle me-1"></i>Réinitialiser</a>
+  {% endif %}
+</form>
+
+{% if filters.context %}
+<div class="mb-3">
+  <a class="chip active" href="{{ url_with(request, context=None, page=None) }}">
+    <i class="bi bi-funnel"></i>{{ filters.context }} <i class="bi bi-x"></i>
+  </a>
+</div>
+{% endif %}
+
+{% if over_dynamic_limit %}
+<div class="alert alert-warning small">
+  <i class="bi bi-exclamation-triangle me-1"></i>
+  Plus de {{ dynamic_limit | num }} résultats : tri et sélection de colonnes désactivés sur cette vue, affinez les filtres pour les réactiver.
+</div>
+{% endif %}
+
+{% macro sort_link(field, label) %}
+{% set next_direction = 'asc' if (sort == field and direction == 'desc') else 'desc' %}
+<a class="sort-link" href="{{ url_with(request, sort=field, direction=next_direction, cols=filters.cols, page=None) }}">
+  {{ label }}
+  {% if sort == field %}<i class="bi bi-caret-{{ 'up' if direction == 'asc' else 'down' }}-fill small"></i>{% endif %}
+</a>
+{% endmacro %}
+
+{% if not items %}
+<div class="card">
+  <div class="card-body empty-state">
+    <i class="bi bi-inbox"></i>
+    <p class="mt-2 mb-0">Aucun élément trouvé.</p>
+  </div>
+</div>
+
+{% elif field_columns or has_titles or has_content %}
+{# Single item_type selected: one real column per field, instead of a
+   generic text summary -- this is what a specific data type actually
+   looks like (e.g. "following" -> Titre / Lien / Depuis), not a
+   one-size-fits-all layout. #}
+<div class="card table-card">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle browse-table">
+      <thead>
+        <tr>
+          <th></th>
+          {% if has_titles %}<th>{{ sort_link('title', 'Titre') if dynamic else 'Titre' }}</th>{% endif %}
+          {% if has_content %}<th>{{ sort_link('content', 'Contenu') if dynamic else 'Contenu' }}</th>{% endif %}
+          {% for col in field_columns %}<th>{{ sort_link(col, col) if dynamic else col }}</th>{% endfor %}
+          {% if show_order_link %}<th>Commande</th>{% endif %}
+          <th>{{ sort_link('date', 'Date') if dynamic else 'Date' }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr onclick="window.location='/items/{{ item.id }}'" class="browse-row">
+          <td>
+            {% if item.media_files and item.media_files[0].media_type == 'photo' %}
+            <img src="/media/{{ item.batch_id }}/{{ item.media_files[0].relative_path }}"
+                 class="browse-thumb" loading="lazy" alt="" />
+            {% elif item.media_files %}
+            <i class="bi bi-paperclip text-muted"></i>
+            {% endif %}
+          </td>
+          {% if has_titles %}<td class="browse-content"><strong>{{ item.title or "" }}</strong></td>{% endif %}
+          {% if has_content %}<td class="browse-content">{{ item.content[:160] if item.content else "" }}</td>{% endif %}
+          {% set fields = items_fields.get(item.id, {}) %}
+          {% for col in field_columns %}
+          <td class="browse-content">{{ (fields.get(col, "") | string)[:120] }}</td>
+          {% endfor %}
+          {% if show_order_link %}
+          <td class="text-nowrap">
+            {% if item.context %}
+            <a href="/browse?source={{ item.source }}&item_type={{ purchase_line_type(item.source) }}&context={{ item.context | urlencode }}"
+               onclick="event.stopPropagation()">
+              <i class="bi bi-box-seam me-1"></i>Contenu de la commande
+            </a>
+            {% endif %}
+          </td>
+          {% endif %}
+          <td class="text-nowrap small text-muted">{{ item.timestamp | date_fr(True) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% else %}
+<div class="card table-card">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle browse-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Type</th>
+          <th>Contenu</th>
+          <th>Auteur / contexte</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        {% set ip = platform(item.source) %}
+        <tr onclick="window.location='/items/{{ item.id }}'" class="browse-row">
+          <td>
+            {% if item.media_files and item.media_files[0].media_type == 'photo' %}
+            <img src="/media/{{ item.batch_id }}/{{ item.media_files[0].relative_path }}"
+                 class="browse-thumb" loading="lazy" alt="" />
+            {% elif item.media_files %}
+            <i class="bi bi-paperclip text-muted"></i>
+            {% else %}
+            <i class="bi {{ ip.icon }}" style="color: {{ ip.color }}" title="{{ ip.label }}"></i>
+            {% endif %}
+          </td>
+          <td>
+            <div class="small fw-medium">{{ item.category | humanize if item.category else ip.label }}</div>
+            <span class="type-badge">{{ item.item_type | humanize }}</span>
+          </td>
+          <td class="browse-content">
+            {% if item.title %}<strong>{{ item.title }}</strong><br>{% endif %}
+            {% if item.content %}
+            {{ item.content[:200] }}
+            {% elif items_fields.get(item.id) %}
+            {% for k, v in items_fields[item.id].items() | list %}{% if loop.index <= 2 %}
+            <span class="text-muted">{{ k }} :</span> {{ (v | string)[:60] }}{% if not loop.last %} ·{% endif %}
+            {% endif %}{% endfor %}
+            {% endif %}
+          </td>
+          <td class="small">
+            {% if item.author %}{{ item.author }}{% endif %}
+            {% if item.context and item.context != item.author %}
+            <div class="text-muted text-truncate" style="max-width: 220px;">{{ item.context }}</div>
+            {% endif %}
+          </td>
+          <td class="text-nowrap small text-muted">{{ item.timestamp | date_fr(True) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{{ m.pagination(request, page, page_count) }}
+
+{% endblock %}

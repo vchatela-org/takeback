@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}{{ batch.original_filename }}{% endblock %}
+
+{% set bp = platform(batch.source) if batch.source else None %}
+
+{% block content %}
+
+<nav aria-label="Fil d'Ariane">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/imports">Imports</a></li>
+    <li class="breadcrumb-item active text-truncate" aria-current="page">{{ batch.original_filename }}</li>
+  </ol>
+</nav>
+
+<div class="page-header">
+  <div class="d-flex align-items-center gap-3 min-w-0">
+    {% if bp %}
+    <span class="platform-icon" style="--platform-color: {{ bp.color }}"><i class="bi {{ bp.icon }}"></i></span>
+    {% else %}
+    <span class="platform-icon" style="--platform-color: #898781"><i class="bi bi-file-earmark-zip"></i></span>
+    {% endif %}
+    <div class="min-w-0">
+      <h1 class="page-title text-break">{{ batch.original_filename }}</h1>
+      <p class="page-subtitle">Importé le {{ batch.created_at | date_fr(True) }}{% if bp %} · {{ bp.label }}{% endif %}</p>
+    </div>
+  </div>
+  {% if bp and batch.status.value == 'done' %}
+  <a href="/p/{{ bp.key }}" class="btn btn-primary">
+    <i class="bi bi-arrow-right-circle me-1"></i>Voir dans {{ bp.label }}
+  </a>
+  {% endif %}
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    {% include "_batch_status.html" %}
+  </div>
+</div>
+
+{% if batch_stats %}
+<div class="row row-cols-1 row-cols-md-3 g-3 mb-4">
+  <div class="col">{{ m.kpi("Éléments dans cet import", batch_stats.count | num, icon="bi-collection") }}</div>
+  <div class="col">{{ m.kpi("Période couverte", period(batch_stats.first, batch_stats.last),
+                            sub=(batch_stats.first | date_fr) ~ " → " ~ (batch_stats.last | date_fr) if batch_stats.first else None,
+                            icon="bi-calendar-range") }}</div>
+  <div class="col">{{ m.kpi("Propres à cet import", batch_stats.unique | num,
+                            sub="absents de tout autre import " ~ (bp.label if bp else ""),
+                            icon="bi-plus-circle",
+                            tooltip="Un export contient tout l'historique du compte : ce qui figure aussi dans un autre import de la même plateforme n'est compté qu'une fois dans la vue de la plateforme.") }}</div>
+</div>
+{% endif %}
+
+{% if batch.status.value == 'done' and categories %}
+<div class="card table-card mb-4">
+  <div class="card-body px-0 pb-1">
+    <div class="d-flex align-items-center justify-content-between px-3 mb-2">
+      <h2 class="chart-title">Contenu du fichier</h2>
+      <a href="/browse?batch_id={{ batch.id }}" class="small"><i class="bi bi-search me-1"></i>Parcourir cet import seul</a>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead><tr><th>Catégorie</th><th>Types</th><th class="num">Éléments</th></tr></thead>
+        <tbody>
+          {% for category, info in categories.items() | sort(attribute='1.total', reverse=True) %}
+          <tr>
+            <td class="fw-medium">{{ category | humanize if category else "Non classé" }}</td>
+            <td>
+              <div class="chip-row">
+                {% for item_type, count in info.item_types | sort(attribute=1, reverse=True) %}
+                <a class="chip" href="/browse?batch_id={{ batch.id }}&category={{ (category or '') | urlencode }}&item_type={{ item_type | urlencode }}">
+                  {{ item_type | humanize }} <span class="text-muted">{{ count | num }}</span>
+                </a>
+                {% endfor %}
+              </div>
+            </td>
+            <td class="num">{{ info.total | num }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-3">
+  {% if has_extracted_files and batch.status.value not in ('pending', 'extracting', 'parsing') %}
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="chart-title mb-1"><i class="bi bi-arrow-clockwise me-2"></i>Réanalyser</h2>
+        <p class="small text-muted">
+          Relance la détection et l'analyse sur les fichiers déjà extraits, sans renvoyer l'archive
+          (utile après une mise à jour de l'application).
+        </p>
+        <form method="post" action="/imports/{{ batch.id }}/reanalyze">
+          <button type="submit" class="btn btn-outline-primary btn-sm">Réanalyser</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if batch.status.value in ('done', 'unrecognized') %}
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="chart-title mb-1"><i class="bi bi-incognito me-2"></i>Version anonymisée</h2>
+        {% if batch.status.value == 'unrecognized' %}
+        <p class="small text-muted">
+          Le format n'a pas été reconnu, mais l'archive a bien été extraite : vous pouvez quand
+          même générer une version anonymisée de son contenu brut pour la transmettre en vue
+          d'ajuster le module d'import correspondant.
+        </p>
+        {% endif %}
+        {% include "_anonymize_status.html" %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="chart-title mb-1"><i class="bi bi-trash me-2"></i>Supprimer</h2>
+        <p class="small text-muted">
+          Supprime ce fichier et ses éléments. Ce qui figure aussi dans un autre import de la
+          même plateforme reste visible.
+        </p>
+        <form method="post" action="/imports/{{ batch.id }}/delete"
+              onsubmit="return confirm('Supprimer cet import et toutes ses données ?')">
+          <button type="submit" class="btn btn-outline-danger btn-sm">Supprimer l'import</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

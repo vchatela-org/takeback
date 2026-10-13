@@ -1,0 +1,78 @@
+{% if has_more %}
+<div id="load-more-container" class="text-center mb-2">
+  <button class="btn btn-sm btn-outline-secondary"
+          onclick="window.__chatPriorHeight = document.getElementById('chat-window').scrollHeight"
+          hx-get="/p/{{ platform.key }}/conversations/messages?context={{ (selected_context or '') | urlencode }}&offset={{ next_offset }}"
+          hx-target="#load-more-container" hx-swap="outerHTML">
+    <i class="bi bi-arrow-up-circle me-1"></i>Charger les messages précédents
+  </button>
+</div>
+{% endif %}
+
+{% set ns = namespace(last_mine=false) %}
+{% for m in messages %}
+{% set mine = me and m.author == me %}
+{% set fields = message_fields.get(m.id, {}) %}
+{% set reaction = fields.get('Réaction') %}
+{% set share_link = fields.get('Lien partagé') %}
+
+{% if reaction %}
+{# A reaction Meta represented as its own synthetic message ("X reacted 😍
+   to your message") -- shown as a small pill pulled up against the last
+   real message, aligned to the same side, since the export doesn't
+   reliably say which prior message it targets but this is at least where
+   it chronologically belongs. #}
+<div class="chat-reaction-row {% if ns.last_mine %}justify-content-end{% else %}justify-content-start{% endif %}">
+  <span class="chat-reaction-pill">{{ fields.get('Réaction de') or m.author or "?" }} a réagi {{ reaction }}</span>
+</div>
+
+{% elif share_link %}
+{% set ns.last_mine = mine %}
+<div class="chat-row {% if mine %}chat-row-mine{% endif %}">
+  <div class="chat-share-card">
+    <div class="chat-share-header">
+      <i class="bi bi-instagram me-1"></i>Publication partagée
+      {% if fields.get("Auteur d'origine") %}<span class="text-muted">par {{ fields["Auteur d'origine"] }}</span>{% endif %}
+    </div>
+    {% if m.content %}<div class="chat-share-text">{{ m.content }}</div>{% endif %}
+    {% for url in message_instagram_urls.get(m.id, []) %}
+    <div class="mt-2">{% include "_instagram_preview.html" %}</div>
+    {% endfor %}
+    {% if m.timestamp %}<div class="chat-time chat-time-light">{{ m.timestamp.strftime('%d/%m/%Y %H:%M') }}</div>{% endif %}
+  </div>
+</div>
+
+{% else %}
+{% set ns.last_mine = mine %}
+<div class="chat-row {% if mine %}chat-row-mine{% endif %}">
+  <div class="chat-bubble {% if mine %}chat-bubble-mine{% endif %}">
+    {% if not mine %}<div class="chat-author">{{ m.author or "?" }}</div>{% endif %}
+    {% if m.content %}<div class="chat-text">{{ m.content }}</div>{% endif %}
+    {% for url in message_instagram_urls.get(m.id, []) %}
+    <div class="mt-1">{% include "_instagram_preview.html" %}</div>
+    {% endfor %}
+    {% for media in m.media_files %}
+      {% if media.media_type == 'photo' %}
+      <img src="/media/{{ m.batch_id }}/{{ media.relative_path }}" class="media-thumb mt-1" loading="lazy" />
+      {% elif media.media_type == 'video' %}
+      <video src="/media/{{ m.batch_id }}/{{ media.relative_path }}" class="mt-1" style="max-width:100%" controls></video>
+      {% else %}
+      <a href="/media/{{ m.batch_id }}/{{ media.relative_path }}" target="_blank" class="d-block mt-1">
+        <i class="bi bi-paperclip me-1"></i>{{ media.original_name }}
+      </a>
+      {% endif %}
+    {% endfor %}
+    {% if not m.media_files %}
+      {% for label, value in fields.items() %}
+        {% if label != 'Réaction' and value is string and (value.startswith('http://') or value.startswith('https://')) %}
+        <a href="{{ value }}" target="_blank" rel="noopener" class="d-block mt-1 small chat-link">
+          <i class="bi bi-link-45deg me-1"></i>{{ label }}
+        </a>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+    {% if m.timestamp %}<div class="chat-time">{{ m.timestamp.strftime('%d/%m/%Y %H:%M') }}</div>{% endif %}
+  </div>
+</div>
+{% endif %}
+{% endfor %}

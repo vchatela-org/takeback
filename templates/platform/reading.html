@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Lecture & écoute — {{ platform.label }}{% endblock %}
+
+{% set d = dashboard %}
+
+{% block content %}
+{% include "platform/_header.html" %}
+
+{% call m.filter_bar(request, date_from, date_to, years, granularity, undated) %}
+  {% if device_options %}
+  {{ m.multi_select(request, "device", device_options, selected_devices, "Tous les appareils", "bi-tablet", "appareils") }}
+  {% endif %}
+{% endcall %}
+
+{% if d.total_sessions == 0 and d.total_finished == 0 %}
+<div class="card">
+  <div class="card-body empty-state">
+    <i class="bi bi-book"></i>
+    <p class="mt-2 mb-0">Aucune session de lecture ou d'écoute sur cette période.</p>
+  </div>
+</div>
+{% else %}
+
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+  <div class="col">{{ m.kpi("Temps de lecture et d'écoute", total_minutes_label, icon="bi-hourglass-split",
+                            sub=(d.total_sessions | num) ~ " sessions" ~ ((" · " ~ (d.total_pages | num) ~ " pages tournées") if d.total_pages else ""),
+                            tooltip="Durées réelles enregistrées par Kindle et Audible, pas une estimation.") }}</div>
+  <div class="col">{{ m.kpi("Jours de lecture", reading_days | num, icon="bi-calendar-check",
+                            sub=(per_day_label ~ " par jour de lecture") if per_day_label else None) }}</div>
+  <div class="col">{{ m.kpi("Plus longue série", ((streak.days | num) ~ " jour" ~ ("s" if streak.days > 1 else "")) if streak else "—",
+                            icon="bi-fire",
+                            sub=("du " ~ (streak.start | date_fr) ~ " au " ~ (streak.end | date_fr)) if streak and streak.days > 1 else None,
+                            tooltip="Jours consécutifs avec au moins une session de lecture ou d'écoute.") }}</div>
+  <div class="col">
+    {% if has_finished %}
+    {{ m.kpi("Livres terminés", d.total_finished | num, icon="bi-journal-check",
+             sub="sur " ~ (title_count | num) ~ " titres lus ou écoutés sur la période",
+             tooltip="Livres Kindle arrivés à la dernière page, ou marqués comme terminés.") }}
+    {% else %}
+    {{ m.kpi("Titres", title_count | num, sub="lus ou écoutés sur la période", icon="bi-journal-bookmark") }}
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-xl-7">
+    {{ m.chart_card("minutesChart", "Temps de lecture et d'écoute", hint="Cliquez sur une barre pour voir les sessions.", height=320, values_toggle=True) }}
+  </div>
+  <div class="col-xl-5">
+    <div class="card chart-card h-100">
+      <div class="card-body">
+        <div class="chart-head">
+          <div>
+            <h2 class="chart-title">Titres les plus lus et écoutés</h2>
+            <p class="chart-hint">Par temps passé, sur la période. Cliquez pour voir les sessions.</p>
+          </div>
+        </div>
+        <ol class="rank-list">
+          {% set top_max = titles[0].minutes if titles else 0 %}
+          {% for t in titles %}
+          <li>
+            <a class="rank-row" href="#"
+               data-drill-url="{{ url_with(request, '/p/' ~ platform.key ~ '/panel', item_type=t.item_type, context=t.context, granularity=None) }}"
+               data-drill-title="{{ t.label }}" data-drill-subtitle="{{ t.source }} · {{ t.sessions }} session(s)">
+              <span class="rank-label" title="{{ t.label }}">
+                {% if t.finished %}<i class="bi bi-check2-circle me-1" title="Terminé" aria-hidden="true"></i><span class="visually-hidden">Terminé : </span>{% endif %}{{ t.label }}
+              </span>
+              <span class="num fw-semibold">{{ (t.minutes // 60) | int }} h {{ '%02d' | format((t.minutes % 60) | int) }}</span>
+              <span class="small text-muted">{{ t.source }} · {{ t.sessions | num }} session(s)</span>
+              <span></span>
+              <span class="rank-bar">
+                {% if t.segments %}
+                {% for seg in t.segments %}<span style="width: {{ (seg.minutes / top_max * 100) if top_max else 0 }}%; background: var(--tb-slot-{{ seg.slot }})" title="{{ seg.label }}"></span>{% endfor %}
+                {% else %}
+                <span style="width: {{ (t.minutes / top_max * 100) if top_max else 0 }}%"></span>
+                {% endif %}
+              </span>
+            </a>
+          </li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if heatmap_max %}
+<div class="mb-4">
+  {{ m.heatmap_card(request, "Quand vous lisez",
+                    "Minutes de lecture et d'écoute par jour de la semaine et heure de début de session (UTC, comme dans l'export). Cliquez sur une case pour voir les sessions.",
+                    heatmap, heatmap_max, weekday_names, '/p/' ~ platform.key ~ '/panel', "min",
+                    drill_params={'item_type': ['reading_session', 'listening_session'], 'device': selected_devices}) }}
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-xl-6">
+    {% if has_finished %}
+    {{ m.chart_card("finishedChart", "Livres terminés", hint="Cliquez sur une barre pour voir les livres.", height=260) }}
+    {% else %}
+    {{ m.chart_card("sessionsChart", "Sessions", height=260) }}
+    {% endif %}
+  </div>
+  <div class="col-xl-6">
+    {{ m.chart_card("pagesChart", "Pages tournées (Kindle)", height=260) }}
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/chart.umd.min.js"></script>
+<script>
+(function () {
+  var data = {{ dashboard | tojson }};
+  var source = {{ platform.key | tojson }};
+  var selectedDevices = {{ selected_devices | tojson }};
+
+  function sessionsDrill(index, series) {
+    var range = data.ranges[index];
+    return {
+      url: TB.url('/p/' + source + '/panel', {
+        item_type: series ? series.keys : ['reading_session', 'listening_session'],
+        device: series ? (series.device ? [series.device] : []) : selectedDevices,
+        date_from: range[0], date_to: range[1],
+      }),
+      title: series ? 'Sessions ' + series.label : 'Sessions de lecture et d’écoute',
+      subtitle: data.labels[index],
+    };
+  }
+
+  function finishedDrill(index) {
+    var range = data.ranges[index];
+    return {
+      url: TB.url('/p/' + source + '/panel', { item_type: 'kindle_finished', date_from: range[0], date_to: range[1] }),
+      title: 'Livres terminés',
+      subtitle: data.labels[index],
+    };
+  }
+
+  TB.bar('minutesChart', { labels: data.labels, series: data.minutes_series, stacked: true, kind: 'minutes', drill: sessionsDrill });
+  TB.bar('sessionsChart', { labels: data.labels, series: data.sessions_series, stacked: true, kind: 'number', drill: sessionsDrill });
+  TB.bar('finishedChart', { labels: data.labels, series: data.finished_series, kind: 'number', drill: finishedDrill });
+  TB.bar('pagesChart', { labels: data.labels, series: data.pages_series, kind: 'number', drill: sessionsDrill });
+})();
+</script>
+{% endblock %}

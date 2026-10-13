@@ -1,0 +1,37 @@
+<div class="platform-header" style="--platform-color: {{ platform.color }}">
+  <nav aria-label="Fil d'Ariane">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Accueil</a></li>
+      <li class="breadcrumb-item active" aria-current="page">{{ platform.label }}</li>
+    </ol>
+  </nav>
+  <div class="d-flex align-items-center flex-wrap gap-3">
+    <span class="platform-icon"><i class="bi {{ platform.icon }}"></i></span>
+    <div class="me-auto">
+      <h1 class="page-title">{{ platform.label }}</h1>
+      <p class="page-subtitle">
+        {% if summary.count %}
+        {{ summary.count | num }} éléments · {{ summary.imports }} import{% if summary.imports > 1 %}s{% endif %}
+        · {{ period(summary.first, summary.last) }}
+        {% else %}
+        Aucune donnée importée pour l'instant
+        {% endif %}
+      </p>
+    </div>
+    <a href="/imports" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-cloud-arrow-up me-1"></i>Ajouter un export
+    </a>
+  </div>
+  {% if views | length > 1 %}
+  <ul class="nav nav-underline platform-tabs">
+    {% for v in views %}
+    <li class="nav-item">
+      <a class="nav-link {% if v.key == active_view %}active{% endif %}" href="/p/{{ platform.key }}{{ v.path }}"
+         {% if v.key == active_view %}aria-current="page"{% endif %}>
+        <i class="bi {{ v.icon }} me-1"></i>{{ view_label(v) }}
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>

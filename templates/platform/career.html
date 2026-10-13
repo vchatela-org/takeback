@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Parcours — {{ platform.label }}{% endblock %}
+
+{% set d = dashboard %}
+{% set t = d.totals %}
+{% set received = t.get('endorsement_received', 0) %}
+{% set given = t.get('endorsement_given', 0) %}
+
+{% block content %}
+{% include "platform/_header.html" %}
+
+{{ m.filter_bar(request, date_from, date_to, years, granularity, undated) }}
+
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-5 g-3 mb-4">
+  <div class="col">{{ m.kpi("Expérience", experience_label or "—",
+                            sub=((timeline.positions | num) ~ " poste(s) · " ~ (timeline.companies | num) ~ " entreprise(s)") if timeline else None,
+                            icon="bi-briefcase",
+                            tooltip="Mois couverts par au moins un poste, sur tout le parcours : deux postes tenus en même temps ne s'additionnent pas.") }}</div>
+  <div class="col">{{ m.kpi("Validations reçues", received | num,
+                            sub=("de " ~ (d.endorser_count | num) ~ " personne(s) · " ~ (d.skill_count | num) ~ " compétence(s)") if received else "sur la période",
+                            icon="bi-patch-check") }}</div>
+  <div class="col">{{ m.kpi("Validations données", given | num,
+                            sub=("à " ~ (d.endorsee_count | num) ~ " personne(s)") if given else "sur la période", icon="bi-hand-thumbs-up") }}</div>
+  <div class="col">{{ m.kpi("Recommandations", t.get('recommendation_received', 0) | num,
+                            sub="reçue(s) · " ~ (t.get('recommendation_given', 0) | num) ~ " donnée(s)", icon="bi-chat-quote") }}</div>
+  <div class="col">{{ m.kpi("Certifications", certifications | length,
+                            sub=("dernière en " ~ certifications[0].timestamp.year) if certifications and certifications[0].timestamp else None,
+                            icon="bi-award") }}</div>
+</div>
+
+{% if timeline %}
+{% set ticks = timeline.ticks %}
+<div class="card chart-card mb-4">
+  <div class="card-body">
+    <div class="chart-head">
+      <div>
+        <h2 class="chart-title">Parcours</h2>
+        <p class="chart-hint">Postes, études et bénévolat, du plus récent au plus ancien — tout le parcours, quelle que soit la période choisie. Cliquez sur une ligne pour le détail.</p>
+      </div>
+      <div class="career-legend">
+        {% for k in timeline.kinds %}<span><i style="--slot: var(--tb-slot-{{ k.slot }})"></i>{{ k.label }}</span>{% endfor %}
+      </div>
+    </div>
+    <div class="career-timeline" role="list"
+         style="--tick-step: {{ (ticks[1].left - ticks[0].left) if ticks | length > 1 else 100 }}%;">
+      <div class="career-row career-axis" aria-hidden="true">
+        <span></span>
+        <span class="career-track">
+          {% for tick in ticks %}<span class="career-tick" style="left: {{ tick.left }}%">{{ tick.label }}</span>{% endfor %}
+        </span>
+      </div>
+      {% for e in timeline.entries %}
+      <a class="career-row" role="listitem" href="/items/{{ e.id }}"
+         title="{{ e.kind }} · {{ e.title }}{% if e.org %} · {{ e.org }}{% endif %} · {{ e.when }}">
+        <span class="career-label">
+          <span class="career-title">{{ e.title }}</span>
+          <span class="career-meta">{{ e.kind }}{% if e.org %} · {{ e.org }}{% endif %} · {{ e.when }}</span>
+        </span>
+        <span class="career-track">
+          <span class="career-bar {% if e.ongoing %}ongoing{% endif %}"
+                style="left: {{ e.left }}%; width: {{ e.width }}%; --slot: var(--tb-slot-{{ e.slot }});"></span>
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-xl-7">
+    {% if d.skills %}
+    {% set skills_height = [220, (d.skills | length) * 30 + 40] | max %}
+    {{ m.chart_card("skillsChart", "Compétences les plus validées",
+                    hint="Validations reçues sur la période, par compétence"
+                         ~ ((" (les " ~ (d.skills | length) ~ " premières sur " ~ (d.skill_count | num) ~ ")") if d.skill_count > d.skills | length else "")
+                         ~ ". Cliquez sur une barre pour voir qui les a données.",
+                    height=skills_height, values_toggle=True, values_on=True) }}
+    {% else %}
+    <div class="card h-100">
+      <div class="card-body empty-state">
+        <i class="bi bi-patch-check"></i>
+        <p class="mt-2 mb-0">Aucune validation de compétence reçue sur cette période.</p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <div class="col-xl-5 d-flex flex-column gap-3">
+    {% for people, title, hint, param in [
+         (d.endorsers, "Qui valide vos compétences", "Les personnes qui vous ont donné le plus de validations sur la période.", "author"),
+         (d.endorsees, "Celles et ceux que vous validez", "Les personnes à qui vous avez donné le plus de validations sur la période.", "context"),
+       ] if people %}
+    {% set top = people[0].count %}
+    {% set item_type = 'endorsement_received' if param == 'author' else 'endorsement_given' %}
+    <div class="card chart-card">
+      <div class="card-body">
+        <div class="chart-head">
+          <div>
+            <h2 class="chart-title">{{ title }}</h2>
+            <p class="chart-hint">{{ hint }} Cliquez pour voir les compétences.</p>
+          </div>
+        </div>
+        <ol class="rank-list">
+          {% for p in people %}
+          <li>
+            <a class="rank-row" href="#"
+               data-drill-url="{{ url_with(request, '/p/' ~ platform.key ~ '/panel', item_type=item_type, granularity=None, **{param: p.label}) }}"
+               data-drill-title="{{ p.label }}" data-drill-subtitle="Validations {{ 'reçues' if param == 'author' else 'données' }}">
+              <span class="rank-label">{{ p.label }}</span>
+              <span class="num fw-semibold">{{ p.count | num }}</span>
+              <span class="rank-bar"><span style="width: {{ (p.count / top * 100) if top else 0 }}%"></span></span>
+            </a>
+          </li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-xl-7">
+    {% if received or given %}
+    {{ m.chart_card("endorsementsChart", "Validations dans le temps",
+                    hint="Données et reçues sur la période. Cliquez sur une barre pour les voir.", height=300, values_toggle=True) }}
+    {% else %}
+    <div class="card h-100">
+      <div class="card-body empty-state">
+        <i class="bi bi-calendar-x"></i>
+        <p class="mt-2 mb-0">Aucune validation sur cette période.</p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <div class="col-xl-5">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="chart-head">
+          <div>
+            <h2 class="chart-title">Recommandations</h2>
+            <p class="chart-hint">Reçues et données sur la période.</p>
+          </div>
+        </div>
+        {% for r in recommendations %}
+        <a class="drill-item" href="/items/{{ r.id }}">
+          <div class="drill-main">
+            <div class="fw-semibold">{{ r.title or "(sans nom)" }}</div>
+            {% if r.fields.get('Poste') or r.context %}
+            <div class="drill-meta">{{ r.fields.get('Poste') or "" }}{% if r.fields.get('Poste') and r.context %} · {% endif %}{{ r.context or "" }}</div>
+            {% endif %}
+          </div>
+          <div class="drill-meta text-nowrap text-end">
+            <span class="type-badge">{{ "Reçue" if r.item_type == "recommendation_received" else "Donnée" }}</span>
+            <div class="mt-1">{{ r.timestamp | date_fr }}</div>
+          </div>
+        </a>
+        {% else %}
+        <p class="text-muted small mb-0">Aucune recommandation sur cette période.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  {% if t.get('learning_course') %}
+  <div class="col-xl-7">
+    {{ m.chart_card("learningChart", "LinkedIn Learning",
+                    hint=(t.learning_course | num) ~ " cours consultés sur la période, datés de leur dernière consultation. Cliquez sur une barre pour les voir.",
+                    height=260, values_toggle=True) }}
+  </div>
+  {% endif %}
+  <div class="{{ 'col-xl-5' if t.get('learning_course') else 'col-12' }}">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="chart-head">
+          <div>
+            <h2 class="chart-title">Certifications</h2>
+            <p class="chart-hint">Tout le parcours, de la plus récente à la plus ancienne.</p>
+          </div>
+        </div>
+        {% for c in certifications %}
+        <a class="drill-item" href="/items/{{ c.id }}">
+          <div class="drill-main">
+            <div class="fw-semibold">{{ c.title }}</div>
+            {% if c.context %}<div class="drill-meta">{{ c.context }}</div>{% endif %}
+          </div>
+          <div class="drill-meta text-nowrap text-end">
+            {{ c.fields.get('Délivrée') or "" }}
+            {% if c.fields.get('Expire') %}<div>expire {{ c.fields['Expire'] }}</div>{% endif %}
+          </div>
+        </a>
+        {% else %}
+        <p class="text-muted small mb-0">Aucune certification.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/chart.umd.min.js"></script>
+<script>
+(function () {
+  var d = {{ dashboard | tojson }};
+  var source = {{ platform.key | tojson }};
+  var period = { date_from: {{ date_from | tojson }}, date_to: {{ date_to | tojson }} };
+  var include1970 = {{ (1 if undated.included else none) | tojson }};
+
+  function panel(params, title, subtitle) {
+    params.include_1970 = include1970;
+    return { url: TB.url('/p/' + source + '/panel', params), title: title, subtitle: subtitle };
+  }
+
+  // Received endorsements per skill; a bar opens who gave them.
+  var skills = d.skills;
+  TB.bar('skillsChart', {
+    labels: skills.map(function (s) { return s.label; }),
+    series: [{ label: 'Validations reçues', slot: 1, data: skills.map(function (s) { return s.count; }) }],
+    horizontal: true, kind: 'number', showValues: true, axisLabel: 'Compétence',
+    drill: function (index) {
+      return panel({ item_type: 'endorsement_received', title: skills[index].label,
+                     date_from: period.date_from, date_to: period.date_to },
+                   skills[index].label, 'Validations reçues');
+    },
+  });
+
+  var endorsements = d.endorsements;
+  TB.bar('endorsementsChart', {
+    labels: endorsements.labels, series: endorsements.series, kind: 'number',
+    drill: function (index, series) {
+      var range = endorsements.ranges[index];
+      return panel({ item_type: series ? series.keys : ['endorsement_given', 'endorsement_received'],
+                     date_from: range[0], date_to: range[1] },
+                   series ? 'Validations ' + series.label.toLowerCase() : 'Validations', endorsements.labels[index]);
+    },
+  });
+
+  var learning = d.learning;
+  TB.bar('learningChart', {
+    labels: learning.labels, series: learning.series, kind: 'number',
+    drill: function (index) {
+      var range = learning.ranges[index];
+      return panel({ item_type: 'learning_course', date_from: range[0], date_to: range[1] },
+                   'Cours LinkedIn Learning', learning.labels[index]);
+    },
+  });
+})();
+</script>
+{% endblock %}

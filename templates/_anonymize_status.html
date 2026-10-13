@@ -1,0 +1,43 @@
+<div id="anon-status"
+     {% if state == 'building' %}
+     hx-get="/imports/{{ batch_id }}/anonymize/status" hx-trigger="every 2s" hx-swap="outerHTML"
+     {% endif %}>
+  {% if state == 'none' %}
+  <form method="post" action="/imports/{{ batch_id }}/anonymize">
+    <button type="submit" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-incognito me-1"></i>Générer une version anonymisée
+    </button>
+  </form>
+  <p class="form-text mb-0 mt-1">
+    Recrée une archive au même format : tout champ texte est remplacé par du contenu généré
+    (par défaut, sauf exceptions techniques précises comme les dates), les noms de
+    dossiers/fichiers (conversations, albums...) sont eux aussi remplacés, et les médias
+    par des fichiers vides — à partager sans risque (support, développement, IA) sans exposer
+    vos données réelles.
+  </p>
+  {% elif state == 'building' %}
+  <span class="badge bg-info fs-6">
+    <span class="spinner-border spinner-border-sm me-1" role="status"></span>Anonymisation en cours…
+  </span>
+  {% elif state == 'ready' %}
+  <a href="/imports/{{ batch_id }}/anonymize/download" class="btn btn-success btn-sm">
+    <i class="bi bi-download me-1"></i>Télécharger la version anonymisée
+  </a>
+  {% if anonymize_warnings %}
+  <details class="mt-2">
+    <summary class="text-warning small">
+      Certains fichiers n'ont pas pu être anonymisés individuellement (vidés par défaut) — détails
+    </summary>
+    <pre class="small text-muted mt-1 mb-0" style="max-height: 200px; overflow: auto;">{{ anonymize_warnings }}</pre>
+  </details>
+  {% endif %}
+  {% elif state == 'error' %}
+  <span class="badge bg-danger fs-6">Erreur lors de l'anonymisation</span>
+  {% if anonymize_error %}
+  <details class="mt-2" open>
+    <summary class="text-danger small">Détail de l'erreur</summary>
+    <pre class="small text-muted mt-1 mb-0" style="max-height: 300px; overflow: auto;">{{ anonymize_error }}</pre>
+  </details>
+  {% endif %}
+  {% endif %}
+</div>
