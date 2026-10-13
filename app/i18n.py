@@ -17,8 +17,13 @@ render as an empty button.
 
 That is also why a partially translated locale is safe to ship: nothing
 disappears, some strings simply stay in the default language until someone
-fills the catalogue in. See docs/i18n.md for what is translated so far and what
-remains.
+fills the catalogue in.
+
+`test_every_key_exists_in_every_catalogue` keeps the catalogues in step: adding
+a key to one locale without adding it to the others fails the suite, which is
+the point. Note that the importers' own field labels (the label/value pairs in
+`items.fields_json`) are *data* read back by label in `app/stats.py` and
+`app/crud.py`, so they are not translatable without migrating stored rows.
 
 Which locale a request gets
 ---------------------------
