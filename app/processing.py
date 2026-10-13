@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import importers, anonymize, dedup, limits
-from app.database import SessionLocal, imports_dir
+from app.database import SessionLocal, batch_extract_dir
 from app.models import ImportBatch, ImportStatus, Item, MediaFile
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ def process_import(batch_id: int, upload_paths: List[Path]) -> None:
     batch is always "one or more zips extracted into one tree", never
     processed one zip at a time."""
     db = SessionLocal()
-    extract_dir = imports_dir() / str(batch_id)
+    extract_dir = batch_extract_dir(batch_id)
     try:
         batch = db.get(ImportBatch, batch_id)
         batch.status = ImportStatus.extracting
@@ -99,7 +99,7 @@ def reanalyze_import(batch_id: int) -> None:
     see the result without pushing everything again -- the extracted tree
     from the first upload is kept around for exactly this."""
     db = SessionLocal()
-    extract_dir = imports_dir() / str(batch_id)
+    extract_dir = batch_extract_dir(batch_id)
     previous_source = None
     try:
         batch = db.get(ImportBatch, batch_id)
@@ -217,6 +217,6 @@ def _detect_and_parse(db: Session, batch: ImportBatch, extract_dir: Path) -> Non
 
 
 def delete_batch_files(batch_id: int) -> None:
-    extract_dir = imports_dir() / str(batch_id)
+    extract_dir = batch_extract_dir(batch_id)
     shutil.rmtree(extract_dir, ignore_errors=True)
     anonymize.delete_artifacts(batch_id)

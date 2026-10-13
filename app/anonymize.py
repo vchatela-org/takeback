@@ -31,7 +31,7 @@ from typing import Any, Optional
 
 from faker import Faker
 
-from app.database import anonymized_dir
+from app.database import anonymized_artifact
 from app.importers import linkedin
 
 # Field names (lowercased) whose string value is a person's name-like identity.
@@ -468,12 +468,11 @@ def anonymize_export(root: Path, dest_zip: Path, source_key: Optional[str] = Non
 # ────────────────────────────────────────────────
 
 def run_anonymize_job(batch_id: int, extract_dir: Path, source_key: Optional[str]) -> None:
-    base = anonymized_dir()
-    building = base / f"{batch_id}.building"
-    error = base / f"{batch_id}.error"
-    warnings = base / f"{batch_id}.warnings"
-    zip_path = base / f"{batch_id}.zip"
-    tmp_path = base / f"{batch_id}.zip.tmp"
+    building = anonymized_artifact(batch_id, ".building")
+    error = anonymized_artifact(batch_id, ".error")
+    warnings = anonymized_artifact(batch_id, ".warnings")
+    zip_path = anonymized_artifact(batch_id, ".zip")
+    tmp_path = anonymized_artifact(batch_id, ".zip.tmp")
 
     error.unlink(missing_ok=True)
     warnings.unlink(missing_ok=True)
@@ -496,27 +495,25 @@ def run_anonymize_job(batch_id: int, extract_dir: Path, source_key: Optional[str
 
 
 def get_state(batch_id: int) -> str:
-    base = anonymized_dir()
-    if (base / f"{batch_id}.building").exists():
+    if anonymized_artifact(batch_id, ".building").exists():
         return "building"
-    if (base / f"{batch_id}.error").exists():
+    if anonymized_artifact(batch_id, ".error").exists():
         return "error"
-    if (base / f"{batch_id}.zip").exists():
+    if anonymized_artifact(batch_id, ".zip").exists():
         return "ready"
     return "none"
 
 
 def get_error_detail(batch_id: int) -> Optional[str]:
-    path = anonymized_dir() / f"{batch_id}.error"
+    path = anonymized_artifact(batch_id, ".error")
     return path.read_text(encoding="utf-8") if path.exists() else None
 
 
 def get_warnings(batch_id: int) -> Optional[str]:
-    path = anonymized_dir() / f"{batch_id}.warnings"
+    path = anonymized_artifact(batch_id, ".warnings")
     return path.read_text(encoding="utf-8") if path.exists() else None
 
 
 def delete_artifacts(batch_id: int) -> None:
-    base = anonymized_dir()
     for suffix in (".zip", ".zip.tmp", ".building", ".error", ".warnings"):
-        (base / f"{batch_id}{suffix}").unlink(missing_ok=True)
+        anonymized_artifact(batch_id, suffix).unlink(missing_ok=True)
