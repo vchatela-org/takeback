@@ -38,6 +38,18 @@ rules settle the rest:
 3. **A maintained tool already exists for the source? Use it.** A connector is
    written only for a source that has none.
 
+## Screenshots
+
+Captured from the running app on a synthetic dataset (fake orders and
+conversations, no real data).
+
+| | |
+|---|---|
+| ![Home](docs/screenshots/home.png) | ![Imports](docs/screenshots/imports.png) |
+| **Home**: one card per platform | **Imports**: drop the `.zip` archives |
+| ![Amazon purchases](docs/screenshots/amazon-purchases.png) | ![Facebook messaging](docs/screenshots/facebook-messaging.png) |
+| **Amazon**: spending by department over time | **Facebook**: messages sent and received |
+
 ## Running it
 
 ```bash
