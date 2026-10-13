@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Activité — {{ platform.label }}{% endblock %}
+
+{% block content %}
+{% include "platform/_header.html" %}
+
+{% call m.filter_bar(request, date_from, date_to, years, granularity, undated) %}
+  <select name="group_by" class="form-select form-select-sm" aria-label="Répartir par" data-auto-submit>
+    {% for key, label in group_dimensions.items() %}
+    <option value="{{ key }}" {% if group_by == key %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  {{ m.multi_select(request, "category", content_options, selected_categories, "Tout le contenu", "bi-tags", "catégories") }}
+{% endcall %}
+
+{% if total_events == 0 %}
+<div class="card">
+  <div class="card-body empty-state">
+    <i class="bi bi-calendar-x"></i>
+    <p class="mt-2 mb-0">Aucun élément daté sur cette période.</p>
+  </div>
+</div>
+{% else %}
+
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+  <div class="col">{{ m.kpi("Éléments datés", total_events | num, icon="bi-activity") }}</div>
+  <div class="col">{{ m.kpi("Temps passé estimé", estimated_duration, icon="bi-hourglass-split",
+                            tooltip="Estimation à partir des horodatages : les activités espacées de moins de 15 min sont regroupées en une même session. Les exports ne contiennent pas de durée réelle — un ordre de grandeur, pas une mesure.") }}</div>
+  <div class="col">{{ m.kpi("Jour le plus actif", top_weekdays[0][0] if top_weekdays else "—",
+                            sub=((top_weekdays[0][1] | num) ~ " éléments") if top_weekdays else None, icon="bi-calendar3") }}</div>
+  <div class="col">{{ m.kpi("Heure la plus active",
+                            ("%02dh – %02dh" | format(top_hours[0][0], (top_hours[0][0] + 1) % 24)) if top_hours else "—",
+                            sub=((top_hours[0][1] | num) ~ " éléments") if top_hours else None, icon="bi-clock") }}</div>
+</div>
+
+<div class="mb-4">
+  {{ m.chart_card("activityChart", "Activité dans le temps, " ~ (group_dimensions[group_by] | lower),
+                  hint="Cliquez sur une barre pour voir les éléments correspondants."
+                       ~ (" Un contenu écrase les autres ? Décochez-le dans « Tout le contenu »." if not selected_categories else ""),
+                  height=340, values_toggle=True) }}
+</div>
+
+{% call m.heatmap_card(request, "Jours et heures d'activité",
+                       "Nombre d'éléments par jour de la semaine et heure. Cliquez sur une case pour les voir.",
+                       heatmap, heatmap_max, weekday_names, '/p/' ~ platform.key ~ '/panel', "éléments") %}
+{% if untimed_events %}
+<p class="chart-hint mt-2 mb-0">
+  <i class="bi bi-info-circle me-1"></i>{{ untimed_events | num }} élément(s) daté(s) sans heure (un jour, un mois…) ne figurent pas dans la grille,
+  l'heure la plus active ni le temps passé estimé.
+</p>
+{% endif %}
+{% endcall %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/chart.umd.min.js"></script>
+<script>
+(function () {
+  var data = {{ timeseries | tojson }};
+  var source = {{ platform.key | tojson }};
+  var groupBy = {{ group_by | tojson }};
+  var categories = {{ selected_categories | tojson }};
+  TB.bar('activityChart', {
+    labels: data.labels, series: data.series, stacked: true, kind: 'number',
+    drill: function (index, series) {
+      var range = data.ranges[index];
+      var params = { category: categories, date_from: range[0], date_to: range[1] };
+      if (series) params[groupBy] = series.keys;
+      return {
+        url: TB.url('/p/' + source + '/panel', params),
+        title: series ? series.label : 'Toute l’activité',
+        subtitle: data.labels[index],
+      };
+    },
+  });
+})();
+</script>
+{% endblock %}

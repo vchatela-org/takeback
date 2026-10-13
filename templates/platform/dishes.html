@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Plats — {{ platform.label }}{% endblock %}
+
+{% set r = ranking %}
+{% set panel_path = '/p/' ~ platform.key ~ '/dishes/panel' %}
+
+{% block content %}
+{% include "platform/_header.html" %}
+
+{% call m.filter_bar(request, date_from, date_to, years, granularity, undated) %}{% endcall %}
+
+{% if not r.total and not r.undelivered_total %}
+<div class="card">
+  <div class="card-body empty-state">
+    <i class="bi bi-egg-fried"></i>
+    <p class="mt-2 mb-0">Aucun plat sur cette période.</p>
+  </div>
+</div>
+{% else %}
+
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+  <div class="col">
+    {{ m.kpi("Plats mangés", r.total | num, sub="dans les boîtes livrées", icon="bi-egg-fried",
+             tooltip="Chaque plat compte pour ce qu'il y en avait dans la boîte : trois portions du même plat dans une boîte, c'est trois fois mangé.") }}
+  </div>
+  <div class="col">
+    {{ m.kpi("Plats différents", r.distinct | num, sub="recettes goûtées", icon="bi-card-list",
+             tooltip="Recettes distinctes dont au moins un plat a été mangé : « Chili sin carne » et « Chili sin carne  » n'en font qu'une. La liste ci-dessous garde aussi les recettes jamais livrées.") }}
+  </div>
+  <div class="col">
+    {{ m.kpi("Plat le plus mangé", r.top[0].label if r.top else "—",
+             sub=((r.top[0].count | num) ~ " fois") if r.top else None, icon="bi-trophy") }}
+  </div>
+  <div class="col">
+    {{ m.kpi("Commandés, non livrés", r.undelivered_total | num, sub="plats jamais mangés", icon="bi-x-octagon",
+             tooltip="Plats choisis pour des créneaux annulés avant paiement, ou pour des boîtes payées puis annulées avant livraison : rien n'est arrivé, ils ne comptent dans aucun plat mangé.") }}
+  </div>
+</div>
+
+{% if trend and trend.labels %}
+<div class="mb-4">
+  {{ m.chart_card("dishesChart", "Plats les plus mangés dans le temps",
+                  hint="Par portions mangées, une barre par plat et par période. Les « Autres » (la longue traîne des recettes goûtées une fois) sont masqués : cliquez sur la légende pour les afficher. Cliquez sur une barre pour voir les plats.",
+                  height=340, values_toggle=True) }}
+</div>
+{% endif %}
+
+<div class="card chart-card">
+  <div class="card-body">
+    <div class="chart-head">
+      <div>
+        <h2 class="chart-title">Tous les plats</h2>
+        <p class="chart-hint">
+          {{ r.top | length | num }} recette{% if r.top | length > 1 %}s{% endif %} sur cette période, de la plus mangée à la moins.
+          Cliquez sur une ligne pour voir les assiettes qu'elle compte.
+        </p>
+      </div>
+      <div class="chart-tools">
+        {% if r.top | length > 10 %}
+        <input type="search" class="form-control form-control-sm" style="max-width: 240px;"
+               placeholder="Filtrer les plats…" data-filter-target="#dishList" aria-label="Filtrer les plats" />
+        {% endif %}
+      </div>
+    </div>
+    {% if r.top %}
+    {% set top = r.top[0].count %}
+    <ol class="rank-list" id="dishList">
+      {% for dish in r.top %}
+      <li data-filter-text="{{ dish.label }}">
+        <a class="rank-row" href="#"
+           data-drill-url="{{ url_with(request, panel_path, dish=dish.key, granularity=None) }}"
+           data-drill-title="{{ dish.label }}"
+           data-drill-subtitle="{{ dish.count | num }} plat(s) mangé(s){% if dish.undelivered %} · {{ dish.undelivered | num }} non livré(s){% endif %}">
+          <span class="rank-label">
+            <span class="rank-index">{{ loop.index }}</span>{{ dish.label }}
+            {% if dish.undelivered %}
+            <span class="text-muted small">+ {{ dish.undelivered | num }} non livré{% if dish.undelivered > 1 %}s{% endif %}</span>
+            {% endif %}
+          </span>
+          <span class="num fw-semibold">{{ dish.count | num }}</span>
+          <span class="rank-bar"><span style="width: {{ (dish.count / top * 100) if top else 0 }}%"></span></span>
+        </a>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="text-muted small mb-0">Rien sur cette période.</p>
+    {% endif %}
+    <p class="chart-hint mt-3 mb-0">
+      <i class="bi bi-info-circle me-1"></i>Un plat « non livré » a été choisi pour une boîte annulée avant
+      paiement, ou payée puis annulée avant livraison : il figure dans la liste mais jamais dans les plats mangés.
+    </p>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if trend and trend.labels %}
+<script src="/static/chart.umd.min.js"></script>
+<script>
+(function () {
+  var trend = {{ trend | tojson }};
+  var source = {{ platform.key | tojson }};
+
+  TB.bar('dishesChart', {
+    labels: trend.labels, series: trend.series, stacked: true, kind: 'number',
+    drill: function (index, series) {
+      var range = trend.ranges[index];
+      var params = {
+        date_from: range[0], date_to: range[1],
+        dish: (!series || series.other) ? null : series.keys[0],
+      };
+      if (series && series.other) params.exclude = trend.leader_keys;
+      return {
+        url: TB.url('/p/' + source + '/dishes/panel', params),
+        title: series ? series.label : 'Tous les plats',
+        subtitle: trend.labels[index],
+      };
+    },
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

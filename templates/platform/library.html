@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Bibliothèque — {{ platform.label }}{% endblock %}
+
+{% set status_icons = {'finished': 'bi-check2-circle', 'started': 'bi-book-half', 'unopened': 'bi-dash-circle'} %}
+{% set status_names = {'finished': 'Terminé', 'started': 'Commencé', 'unopened': 'Jamais ouvert'} %}
+
+{% block content %}
+{% include "platform/_header.html" %}
+
+{% if not totals.books %}
+<div class="card">
+  <div class="card-body empty-state">
+    <i class="bi bi-bookshelf"></i>
+    <p class="mt-2 mb-0">Aucun livre dans cet export.</p>
+  </div>
+</div>
+{% else %}
+
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+  <div class="col">{{ m.kpi("Livres et documents", totals.books | num, icon="bi-bookshelf",
+                            sub=((totals.books - totals.in_library) | num ~ " lus hors bibliothèque") if totals.books > totals.in_library else "dans la bibliothèque Kindle") }}</div>
+  <div class="col">{{ m.kpi("Terminés", totals.finished | num, icon="bi-journal-check",
+                            sub=((totals.finished / totals.books * 100) | round | int) ~ " % des titres") }}</div>
+  <div class="col">{{ m.kpi("Jamais ouverts", totals.unopened | num, icon="bi-dash-circle",
+                            sub="dans la bibliothèque, sans aucune session",
+                            tooltip="Achetés ou envoyés sur le Kindle, sans session de lecture ni annotation dans l'export.") }}</div>
+  <div class="col">{{ m.kpi("Annotations", totals.annotations | num, icon="bi-highlighter",
+                            sub="dans " ~ (totals.annotated_books | num) ~ " livre" ~ ("s" if totals.annotated_books > 1 else ""),
+                            tooltip="Surlignages, notes et signets. L'export Kindle en donne la date et la couleur, pas le texte surligné.") }}</div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-xl-7">
+    {{ m.chart_card("arrivalsChart", "Arrivées dans la bibliothèque, " ~ ("par an" if arrivals_granularity == "year" else "par mois"),
+                    hint="Livres achetés et documents envoyés sur le Kindle. Cliquez sur une barre pour les voir.", height=300, values_toggle=True) }}
+  </div>
+  <div class="col-xl-5">
+    {{ m.chart_card("statusChart", "Où en sont vos livres",
+                    hint="Par origine, la lecture de chaque titre sur tout l'historique. Cliquez pour voir les titres.", height=300) }}
+  </div>
+</div>
+
+<form method="get" action="{{ request.url.path }}" class="filter-bar">
+  <div class="chip-row" role="group" aria-label="Statut">
+    <a class="chip {% if not status %}active{% endif %}" href="{{ url_with(request, status=None, page=None) }}">Tous <span class="text-muted">{{ totals.books | num }}</span></a>
+    {% for key, info in statuses.items() %}
+    <a class="chip {% if status == key %}active{% endif %}" href="{{ url_with(request, status=key, page=None) }}">
+      <i class="bi {{ status_icons[key] }}"></i>{{ info[0] }} <span class="text-muted">{{ totals[key] | num }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% if status %}<input type="hidden" name="status" value="{{ status }}" />{% endif %}
+  <select name="kind" class="form-select form-select-sm" aria-label="Origine" style="max-width: 14rem;" data-auto-submit>
+    <option value="">Toutes origines</option>
+    {% for key, label in kinds.items() %}
+    <option value="{{ key }}" {% if kind == key %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  {% if device_options %}
+  {{ m.multi_select(request, "device", device_options, selected_devices, "Tous les appareils", "bi-tablet", "appareils") }}
+  {% endif %}
+  <input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Titre ou auteur…"
+         aria-label="Rechercher un livre" style="min-width: 14rem;" />
+  <input type="hidden" name="sort" value="{{ sort }}" />
+  <input type="hidden" name="direction" value="{{ direction }}" />
+  <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel me-1"></i>Appliquer</button>
+</form>
+
+<div class="d-flex flex-wrap gap-3 align-items-baseline mb-3">
+  <span class="text-muted">{{ book_count | num }} titre{% if book_count > 1 %}s{% endif %}</span>
+  {% if status or kind or q or selected_devices %}
+  <a class="small ms-auto" data-forget="device:{{ platform.key }}" href="{{ url_with(request, status=None, kind=None, q=None, device=None, page=None) }}">
+    <i class="bi bi-x-circle me-1"></i>Réinitialiser les filtres
+  </a>
+  {% endif %}
+</div>
+
+{% if not books %}
+<div class="card">
+  <div class="card-body empty-state">
+    <i class="bi bi-inbox"></i>
+    <p class="mt-2 mb-0">Aucun livre ne correspond à ces filtres.</p>
+  </div>
+</div>
+{% else %}
+<div class="card table-card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          {{ m.sort_header(request, 'title', 'Titre', sort, direction, 'w-100') }}
+          {{ m.sort_header(request, 'added', 'Ajouté le', sort, direction) }}
+          {{ m.sort_header(request, 'minutes', 'Temps de lecture', sort, direction, 'num') }}
+          {{ m.sort_header(request, 'activity', 'Dernière activité', sort, direction) }}
+          {{ m.sort_header(request, 'finished', 'Terminé le', sort, direction) }}
+          {{ m.sort_header(request, 'annotations', 'Annotations', sort, direction, 'num') }}
+          <th>Statut</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in books %}
+        <tr class="browse-row" role="button" tabindex="0"
+            data-drill-url="{{ b.panel_url }}" data-drill-title="{{ b.title }}"
+            data-drill-subtitle="{{ b.author or b.kind_label }}">
+          <td class="browse-content" style="min-width: 16rem;">
+            <div class="fw-semibold">{{ b.title }}</div>
+            <div class="small text-muted">{% if b.author %}{{ b.author }} · {% endif %}{{ b.kind_label }}</div>
+          </td>
+          <td class="text-nowrap text-muted">{{ b.added | date_fr }}</td>
+          <td class="num">
+            {% if b.sessions %}{{ b.minutes | duration }}<div class="small text-muted">{{ b.sessions | num }} session{% if b.sessions > 1 %}s{% endif %}</div>{% else %}<span class="text-muted">–</span>{% endif %}
+          </td>
+          <td class="text-nowrap text-muted">{{ b.last_activity | date_fr }}</td>
+          <td class="text-nowrap">{{ b.finished | date_fr }}</td>
+          <td class="num">{{ (b.annotations | num) if b.annotations else '–' }}</td>
+          <td class="text-nowrap small"><i class="bi {{ status_icons[b.status] }} me-1" aria-hidden="true"></i>{{ status_names[b.status] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{ m.pagination(request, page, page_count) }}
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/chart.umd.min.js"></script>
+<script>
+(function () {
+  var arrivals = {{ arrivals | tojson }};
+  var breakdown = {{ breakdown | tojson }};
+  var source = {{ platform.key | tojson }};
+  var selectedDevices = {{ selected_devices | tojson }};
+
+  TB.bar('arrivalsChart', {
+    labels: arrivals.labels, series: arrivals.series, stacked: true, kind: 'number',
+    drill: function (index, series) {
+      var range = arrivals.ranges[index];
+      return {
+        url: TB.url('/p/' + source + '/panel', {
+          item_type: series ? series.keys : ['kindle_book', 'kindle_document'],
+          date_from: range[0], date_to: range[1],
+        }),
+        title: series ? series.label : 'Arrivées dans la bibliothèque',
+        subtitle: arrivals.labels[index],
+      };
+    },
+  });
+
+  TB.bar('statusChart', {
+    labels: breakdown.labels, series: breakdown.series, stacked: true, horizontal: true, kind: 'number',
+    showValues: true, axisLabel: 'Origine',
+    drill: function (index, series) {
+      return {
+        url: TB.url('/p/' + source + '/library/panel', { kind: breakdown.kinds[index], status: series ? series.keys[0] : null, device: selectedDevices }),
+        title: breakdown.labels[index] + (series ? ' · ' + series.label.toLowerCase() : ''),
+        subtitle: '',
+      };
+    },
+  });
+})();
+</script>
+{% endblock %}

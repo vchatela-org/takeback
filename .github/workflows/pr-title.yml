@@ -1,0 +1,17 @@
+name: 🏷️ PR title
+
+# Squash merges make the PR title the release-note line (and the version bump), so it
+# must be a conventional commit. vchatela-org/shared-workflows, pr-title.yml.
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, edited, synchronize, reopened ]
+
+permissions: {}
+
+jobs:
+  title:
+    uses: vchatela-org/shared-workflows/.github/workflows/pr-title.yml@v1
+    with:
+      # Public repository: a fork's PR must never reach the self-hosted runners.
+      runs_on: ubuntu-latest

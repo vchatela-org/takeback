@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Achats — {{ platform.label }}{% endblock %}
+
+{% set d = dashboard %}
+{% set dim_label = group_dimensions[group_by] %}
+
+{% block content %}
+{% include "platform/_header.html" %}
+
+{% call m.filter_bar(request, date_from, date_to, years, granularity, undated) %}
+  <select name="group_by" class="form-select form-select-sm" aria-label="Répartir par" data-auto-submit>
+    {% for key, label in group_dimensions.items() %}
+    <option value="{{ key }}" {% if group_by == key %}selected{% endif %}>Par {{ label | lower }}</option>
+    {% endfor %}
+  </select>
+{% endcall %}
+
+{% if d.total_orders == 0 and d.total_returns == 0 and d.total_lines == 0 %}
+<div class="card">
+  <div class="card-body empty-state">
+    <i class="bi bi-bag"></i>
+    <p class="mt-2 mb-0">Aucun achat ni retour sur cette période.</p>
+  </div>
+</div>
+{% else %}
+
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+  <div class="col">
+    {% call m.kpi("Total dépensé", d.total_spend | money(currency), icon="bi-wallet2", value_id="totalSpentValue",
+                  tooltip=None if currency else "Somme des montants toutes devises confondues (pas de conversion) — indicatif.") %}
+    <div class="form-check form-switch mt-1 mb-0 small">
+      <input class="form-check-input" type="checkbox" id="deductReturns"
+             data-gross="{{ d.total_spend | money(currency) }}" data-net="{{ (d.total_spend - d.total_refunded) | money(currency) }}">
+      <label class="form-check-label text-muted" for="deductReturns">Déduire les remboursements</label>
+    </div>
+    {% endcall %}
+  </div>
+  <div class="col">{{ m.kpi("Commandes", d.total_orders | num, sub=(d.total_lines | num) ~ " article(s)", icon="bi-box-seam") }}</div>
+  <div class="col">{{ m.kpi("Panier moyen", ((d.total_spend / d.total_orders) if d.total_orders else 0) | money(currency),
+                            sub="par commande", icon="bi-basket") }}</div>
+  <div class="col">{{ m.kpi("Remboursé", d.total_refunded | money(currency), sub=(d.total_returns | num) ~ " retour(s)", icon="bi-arrow-counterclockwise") }}</div>
+</div>
+
+<div class="mb-4">
+  {{ m.chart_card("spendChart", "Dépenses dans le temps, par " ~ (dim_label | lower),
+                  hint="Cliquez sur une barre pour voir les achats correspondants.", height=320, values_toggle=True) }}
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="{{ 'col-xl-6' if yearly else 'col-12' }}">
+    {{ m.chart_card("cumulChart", "Dépenses cumulées",
+                    hint="Total dépensé depuis le début de la période. Cliquez sur un point pour voir les achats ajoutés à ce moment-là.",
+                    height=300) }}
+  </div>
+  {% if yearly %}
+  {% set older_years = yearly.series | selectattr('slot', 'equalto', 'other') | list %}
+  <div class="col-xl-6">
+    {{ m.chart_card("yearlyChart", "Cumul année par année",
+                    hint="Dépensé depuis le 1er janvier, une courbe par année"
+                         ~ (" (les plus anciennes en gris)" if older_years else "")
+                         ~ ". Cliquez sur une courbe pour voir les achats de l'année jusqu'à ce jour.",
+                    height=300) }}
+  </div>
+  {% endif %}
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-7">
+    {% set breakdown_height = [220, (breakdown | length) * 30 + 40] | max %}
+    {{ m.chart_card("groupChart", "Dépenses par " ~ (dim_label | lower),
+                    hint="Cliquez sur une ligne pour voir ce qu'elle contient.",
+                    height=[breakdown_height, 900] | min, values_toggle=True, values_on=True) }}
+  </div>
+  <div class="col-lg-5">
+    <div class="card chart-card h-100">
+      <div class="card-body">
+        <div class="chart-head">
+          <div>
+            <h2 class="chart-title">Achats les plus chers</h2>
+            <p class="chart-hint">Sur la période sélectionnée</p>
+          </div>
+          <a href="{{ url_with(request, '/p/' ~ platform.key ~ '/purchases/list', sort='amount', direction='desc', granularity=None) }}"
+             class="btn btn-sm btn-ghost">Tous les achats <i class="bi bi-arrow-right"></i></a>
+        </div>
+        <ol class="rank-list">
+          {% set top_max = top_purchases[0].amount if top_purchases else 0 %}
+          {% for p in top_purchases %}
+          <li>
+            <a class="rank-row" href="/items/{{ p.id }}">
+              <span class="rank-label" title="{{ p.product }}">{{ p.product or "(sans nom)" }}</span>
+              <span class="num fw-semibold">{{ p.amount | money(currency) }}</span>
+              <span class="small text-muted rank-label">{{ p.group }} · {{ p.timestamp | date_fr }}</span>
+              <span></span>
+              <span class="rank-bar"><span style="width: {{ (p.amount / top_max * 100) if top_max else 0 }}%"></span></span>
+            </a>
+          </li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mb-4">
+  {{ m.chart_card("ordersChart", "Commandes et retours dans le temps", hint="Nombre de commandes distinctes (et non d'articles).", height=260) }}
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-xxl-4">
+    {{ m.chart_card("weekdayChart", "Dépenses par jour de la semaine",
+                    hint="Par " ~ (dim_label | lower) ~ ". Cliquez sur une barre pour voir les achats faits ce jour-là.",
+                    height=300, values_toggle=True, values_on=True) }}
+  </div>
+  <div class="col-xxl-8">
+    {% call m.heatmap_card(request, "Jours et heures de commande",
+                           "Commandes distinctes par jour de la semaine et heure (UTC, comme dans l'export). Cliquez sur une case pour les voir.",
+                           rhythm.heatmap, rhythm.heatmap_max, weekday_names, '/p/' ~ platform.key ~ '/purchases/panel', "commandes") %}
+    {% if rhythm.untimed_orders %}
+    <p class="chart-hint mt-2 mb-0">
+      <i class="bi bi-info-circle me-1"></i>{{ rhythm.untimed_orders | num }} commande(s) datée(s) sans heure ne figurent pas dans la grille
+      (elles comptent dans les dépenses par jour de la semaine).
+    </p>
+    {% endif %}
+    {% endcall %}
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/chart.umd.min.js"></script>
+<script>
+(function () {
+  var data = {{ dashboard | tojson }};
+  var breakdown = {{ breakdown | tojson }};
+  var currency = {{ (currency or '') | tojson }};
+  var source = {{ platform.key | tojson }};
+  var groupBy = {{ group_by | tojson }};
+  var period = { date_from: {{ date_from | tojson }}, date_to: {{ date_to | tojson }} };
+  var include1970 = {{ (1 if undated.included else none) | tojson }};
+  var dimLabel = {{ group_dimensions[group_by] | tojson }};
+  var periodLabel = {{ (date_from[:4] if date_from and date_from[:4] == date_to[:4] else ('Toute la période' if not date_from and not date_to else (date_from[:10] ~ ' → ' ~ date_to[:10]))) | tojson }};
+
+  function purchasesPanel(groups, range, title, subtitle) {
+    return {
+      url: TB.url('/p/' + source + '/purchases/panel', {
+        group_by: groupBy, group: groups, include_1970: include1970,
+        date_from: range ? range[0] : period.date_from, date_to: range ? range[1] : period.date_to,
+      }),
+      title: title, subtitle: subtitle,
+    };
+  }
+
+  // Spend over time, stacked by the chosen dimension; refunds as a
+  // negative series below the baseline, shown once "Déduire" is checked.
+  var spendSeries = data.spend_series.slice();
+  spendSeries.push({ label: 'Remboursements', slot: TB.RETURNS_SLOT, data: data.returns_amount_series, hidden: true, returns: true });
+  var spendChart = TB.bar('spendChart', {
+    labels: data.labels, series: spendSeries, stacked: true, kind: 'money', currency: currency,
+    drill: function (index, series) {
+      var range = data.ranges[index];
+      if (series && series.returns) {
+        return {
+          url: TB.url('/p/' + source + '/panel', { item_type: ['return', 'return_status'], date_from: range[0], date_to: range[1] }),
+          title: 'Remboursements', subtitle: data.labels[index],
+        };
+      }
+      return purchasesPanel(series ? series.keys : [], range, series ? series.label : 'Tous les achats', data.labels[index]);
+    },
+  });
+
+  // Spend per group of the dimension: one series, one colour; click a row.
+  TB.bar('groupChart', {
+    labels: breakdown.map(function (g) { return g.label; }),
+    series: [{ label: 'Dépenses', slot: 0, data: breakdown.map(function (g) { return g.value; }) }],
+    horizontal: true, kind: 'money', currency: currency, showValues: true, axisLabel: dimLabel,
+    drill: function (index) {
+      var g = breakdown[index];
+      return purchasesPanel([g.label], null, g.label, dimLabel + ' · ' + periodLabel);
+    },
+  });
+
+  TB.bar('ordersChart', {
+    labels: data.labels,
+    series: [
+      { label: 'Commandes', slot: 0, data: data.orders_series },
+      { label: 'Retours', slot: TB.RETURNS_SLOT, data: data.returns_series },
+    ],
+    kind: 'number',
+    drill: function (index, series) {
+      var range = data.ranges[index];
+      if (series && series.label === 'Retours') {
+        return {
+          url: TB.url('/p/' + source + '/panel', { item_type: ['return', 'return_status'], date_from: range[0], date_to: range[1] }),
+          title: 'Retours', subtitle: data.labels[index],
+        };
+      }
+      return purchasesPanel([], range, 'Commandes', data.labels[index]);
+    },
+  });
+
+  // Running total, at the same buckets as the spend chart.
+  var cumulChart = TB.line('cumulChart', {
+    labels: data.labels, kind: 'money', currency: currency,
+    series: [{ label: 'Dépenses cumulées', slot: 0, data: data.cumulative_series, net: data.cumulative_net_series }],
+    drill: function (index) {
+      return purchasesPanel([], data.ranges[index], 'Achats ajoutés', data.labels[index]);
+    },
+  });
+
+  // Every year on one 01/01 -> 31/12 axis, labelled at each month start.
+  var yearly = {{ yearly | tojson }};
+  var MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  var yearlyChart = yearly && TB.line('yearlyChart', {
+    labels: yearly.labels, series: yearly.series, kind: 'money', currency: currency, axisLabel: 'Jour',
+    tickLabel: function (label) { return label.slice(0, 2) === '01' ? MONTHS[Number(label.slice(3)) - 1] : ''; },
+    drill: function (index, series) {
+      if (!series) return null;
+      var from = series.year + '-01-01';
+      if (period.date_from && period.date_from.slice(0, 4) === String(series.year) && period.date_from > from) {
+        from = period.date_from;
+      }
+      return purchasesPanel([], [from, series.year + '-' + yearly.days[index] + 'T23:59:59'],
+                            series.label + ' jusqu’au ' + yearly.labels[index], 'Achats depuis le début de l’année');
+    },
+  });
+
+  // Spend per day of the week, stacked like the spend chart.
+  var rhythm = {{ rhythm | tojson }};
+  TB.bar('weekdayChart', {
+    labels: rhythm.labels, series: rhythm.spend_series, stacked: true, horizontal: true, kind: 'money', currency: currency,
+    showValues: true, axisLabel: 'Jour',
+    drill: function (index, series) {
+      return {
+        url: TB.url('/p/' + source + '/purchases/panel', {
+          group_by: groupBy, group: series ? series.keys : [], weekday: index, include_1970: include1970,
+          date_from: period.date_from, date_to: period.date_to,
+        }),
+        title: (series ? series.label + ' · ' : '') + rhythm.labels[index],
+        subtitle: periodLabel,
+      };
+    },
+  });
+
+  var deduct = document.getElementById('deductReturns');
+  if (deduct) {
+    deduct.addEventListener('change', function () {
+      document.getElementById('totalSpentValue').textContent = deduct.checked ? deduct.dataset.net : deduct.dataset.gross;
+      if (spendChart) {
+        var index = spendChart.data.datasets.findIndex(function (ds) { return ds.tb.returns; });
+        spendChart.setDatasetVisibility(index, deduct.checked);
+        spendChart.update();
+      }
+      TB.useNet(cumulChart, deduct.checked);
+      TB.useNet(yearlyChart, deduct.checked);
+    });
+  }
+})();
+</script>
+{% endblock %}

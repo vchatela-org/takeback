@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}{{ platform.label }}{% endblock %}
+
+{% block content %}
+{% include "platform/_header.html" %}
+
+{% if not summary.count %}
+<div class="card">
+  <div class="card-body empty-state">
+    <i class="bi bi-cloud-arrow-up"></i>
+    <p class="mt-2 mb-1">Aucun export {{ platform.label }} importé pour l'instant.</p>
+    {% if platform.export_hint %}<p class="small text-muted">Où le demander : {{ export_hint(platform) }}.</p>{% endif %}
+    <a href="/imports" class="btn btn-primary mt-2">Importer un export</a>
+  </div>
+</div>
+{% else %}
+
+<div class="row row-cols-2 row-cols-lg-4 g-3 mb-4">
+  <div class="col">{{ m.kpi("Éléments", summary.count | num, icon="bi-collection",
+                            tooltip="Chaque élément n'est compté qu'une fois, même s'il figure dans plusieurs imports.") }}</div>
+  <div class="col">{{ m.kpi("Période couverte", period(summary.first, summary.last),
+                            sub=(summary.first | date_fr) ~ " → " ~ (summary.last | date_fr) if summary.first else None,
+                            icon="bi-calendar-range") }}</div>
+  <div class="col">{{ m.kpi("Imports", summary.imports, icon="bi-files") }}</div>
+  <div class="col">{{ m.kpi("Dernier import", summary.last_import | date_fr, icon="bi-clock-history") }}</div>
+</div>
+
+{% if content_options or undated.count %}
+<form method="get" action="{{ request.url.path }}" class="filter-bar mb-3">
+  {{ m.multi_select(request, "category", content_options, selected_categories, "Tout le contenu", "bi-tags", "catégories") }}
+  {{ m.undated_toggle(undated) }}
+  {% if views | selectattr('key', 'equalto', 'activity') | list %}
+  <a class="btn btn-sm btn-ghost ms-auto" href="{{ url_with(request, '/p/' ~ platform.key ~ '/activity') }}">
+    Activité détaillée <i class="bi bi-arrow-right"></i>
+  </a>
+  {% endif %}
+</form>
+{% endif %}
+
+<div class="mb-4">
+  {% if timeline.labels %}
+  {{ m.chart_card("timelineChart", "Contenu dans le temps",
+                  hint="Éléments datés par " ~ ("an" if timeline_granularity == "year" else "mois") ~ ", par catégorie. "
+                       ~ ("Un contenu écrase les autres ? Décochez-le dans « Tout le contenu ». " if not selected_categories else "")
+                       ~ "Cliquez sur une barre pour voir les éléments.",
+                  height=280, values_toggle=True, values_on=timeline_granularity == "year") }}
+  {% else %}
+  <div class="card">
+    <div class="card-body empty-state">
+      <i class="bi bi-calendar-x"></i>
+      <p class="mt-2 mb-0">Aucun élément daté{% if selected_categories %} dans le contenu choisi{% endif %}.</p>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+  <h2 class="h5 mb-0">Données</h2>
+  <input type="search" class="form-control form-control-sm" style="max-width: 260px;"
+         placeholder="Filtrer les catégories…" data-filter-target="#categoryGrid" aria-label="Filtrer les catégories" />
+</div>
+
+<div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3 mb-4" id="categoryGrid">
+  {% for category, info in categories %}
+  {% set cat_label = category | humanize if category else "Non classé" %}
+  <div class="col" data-filter-text="{{ cat_label }} {% for t, c in info.item_types %}{{ t | humanize }} {% endfor %}">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+          <h3 class="h6 mb-0">
+            <a class="text-reset text-decoration-none" href="/browse?source={{ platform.key }}&category={{ (category or '') | urlencode }}">{{ cat_label }}</a>
+          </h3>
+          <span class="fw-semibold">{{ info.total | num }}</span>
+        </div>
+        <div class="chip-row">
+          {% for item_type, count in info.item_types | sort(attribute=1, reverse=True) %}
+          <a class="chip" href="/browse?source={{ platform.key }}&category={{ (category or '') | urlencode }}&item_type={{ item_type | urlencode }}">
+            {{ item_type | humanize }} <span class="text-muted">{{ count | num }}</span>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card table-card">
+  <div class="card-body px-0 pb-1">
+    <div class="px-3 mb-2">
+      <h2 class="chart-title">Imports de cette plateforme</h2>
+      <p class="chart-hint">
+        Un élément présent dans plusieurs imports n'est retenu qu'une fois, dans l'import le plus récent.
+      </p>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead>
+          <tr>
+            <th>Fichier</th>
+            <th>Période couverte</th>
+            <th class="num">Éléments</th>
+            <th class="num">
+              Retenus
+              <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip"
+                 title="Éléments de ce fichier comptés dans la plateforme (les autres figurent déjà dans un import plus récent)."></i>
+            </th>
+            <th class="num">Importé le</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for batch in batches %}
+          {% set cov = coverage.get(batch.id, {}) %}
+          <tr>
+            <td class="text-truncate" style="max-width: 380px;"><a href="/imports/{{ batch.id }}">{{ batch.original_filename }}</a></td>
+            <td class="text-muted">
+              {% if cov.first %}{{ cov.first | date_fr }} → {{ cov.last | date_fr }}{% else %}—{% endif %}
+            </td>
+            <td class="num">{{ (cov.count or 0) | num }}</td>
+            <td class="num">{{ (cov.kept or 0) | num }}</td>
+            <td class="num text-muted">{{ batch.created_at | date_fr }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if summary.count and timeline.labels %}
+<script src="/static/chart.umd.min.js"></script>
+<script>
+(function () {
+  var data = {{ timeline | tojson }};
+  var source = {{ platform.key | tojson }};
+  var categories = {{ selected_categories | tojson }};
+  TB.bar('timelineChart', {
+    labels: data.labels, series: data.series, stacked: true, kind: 'number',
+    showValues: {{ (timeline_granularity == 'year') | tojson }},
+    drill: function (index, series) {
+      var range = data.ranges[index];
+      return {
+        url: TB.url('/p/' + source + '/panel', { category: series ? series.keys : categories, date_from: range[0], date_to: range[1] }),
+        title: series ? series.label : 'Tout le contenu',
+        subtitle: data.labels[index],
+      };
+    },
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

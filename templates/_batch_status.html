@@ -1,0 +1,32 @@
+{% set badge = {
+  'pending': 'text-bg-secondary', 'extracting': 'text-bg-info', 'parsing': 'text-bg-info',
+  'done': 'text-bg-success', 'error': 'text-bg-danger', 'unrecognized': 'text-bg-warning'
+} %}
+{% set label = {
+  'pending': 'En attente', 'extracting': 'Extraction en cours…', 'parsing': 'Analyse en cours…',
+  'done': 'Terminé', 'error': 'Erreur', 'unrecognized': 'Format non reconnu'
+} %}
+{% set icon = {'done': 'bi-check2', 'error': 'bi-x-octagon', 'unrecognized': 'bi-question-circle'} %}
+<div id="batch-status"
+     {% if batch.status.value in ('pending', 'extracting', 'parsing') %}
+     hx-get="/imports/{{ batch.id }}/status" hx-trigger="every 2s" hx-swap="outerHTML"
+     {% endif %}>
+  <div class="d-flex align-items-center flex-wrap gap-3">
+    <span class="badge {{ badge[batch.status.value] }} fs-6">
+      {% if batch.status.value in ('pending', 'extracting', 'parsing') %}
+      <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+      {% else %}
+      <i class="bi {{ icon[batch.status.value] }} me-1"></i>
+      {% endif %}
+      {{ label[batch.status.value] }}
+    </span>
+    {% if batch.status.value == 'done' %}
+    <span>{{ batch.item_count | num }} élément(s) lus depuis <strong>{{ platform(batch.source).label }}</strong>.</span>
+    {% elif batch.status.value in ('pending', 'extracting', 'parsing') %}
+    <span class="text-muted small">La page se met à jour automatiquement.</span>
+    {% endif %}
+  </div>
+  {% if batch.status.value != 'done' and batch.error_message %}
+  <p class="mt-2 mb-0 text-danger">{{ batch.error_message }}</p>
+  {% endif %}
+</div>

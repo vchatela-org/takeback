@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Réseau — {{ platform.label }}{% endblock %}
+
+{% set d = dashboard %}
+{% set lost_roles = roles | selectattr('lost', 'ne', none) | list %}
+{% set undated = roles | sum(attribute='undated') %}
+
+{% block content %}
+{% include "platform/_header.html" %}
+
+{{ m.filter_bar(request, date_from, date_to, years, granularity, undated) }}
+
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+  {% for r in roles %}
+  <div class="col">{{ m.kpi(r.label, r.count | num, sub=("dernier export, au " ~ (r.as_of | date_fr)) if r.as_of else "dernier export",
+                            icon="bi-people",
+                            tooltip="Liste du dernier import qui la contient : une liste de relations est un instantané, pas un historique. La période choisie ne s'applique pas ici.") }}</div>
+  {% endfor %}
+  {% if reciprocity %}
+  {% set mutual = reciprocity | selectattr('group', 'equalto', 'mutual') | first %}
+  <div class="col">{{ m.kpi("Réciproques", mutual.count | num,
+                            sub=((mutual.count * 100 / following_count) | round | int ~ " % de vos abonnements") if following_count else None,
+                            icon="bi-arrow-left-right", tooltip="Comptes que vous suivez et qui vous suivent, dans le dernier export.") }}</div>
+  {% endif %}
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-xl-7">
+    {{ m.chart_card("growthChart", "Taille du réseau",
+                    hint="Réseau actuel (dernier export), compté à partir de la date de chaque relation : les comptes partis entre-temps n'y figurent pas"
+                         ~ ((", ni " ~ (undated | num) ~ " sans date") if undated else "")
+                         ~ ". Cliquez sur un point pour voir les relations ajoutées à ce moment-là.",
+                    height=340, values_toggle=True, values_on=True) }}
+  </div>
+  <div class="col-xl-5 d-flex flex-column gap-3">
+    {% if reciprocity %}
+    {% set top_count = reciprocity | map(attribute='count') | max %}
+    <div class="card chart-card">
+      <div class="card-body">
+        <div class="chart-head">
+          <div>
+            <h2 class="chart-title">Réciprocité</h2>
+            <p class="chart-hint">Abonnés et abonnements du dernier export. Cliquez pour voir les comptes.</p>
+          </div>
+        </div>
+        <ol class="rank-list">
+          {% for g in reciprocity %}
+          <li>
+            <a class="rank-row" href="#" data-drill-url="/p/{{ platform.key }}/network/panel?group={{ g.group }}"
+               data-drill-title="{{ g.label }}" data-drill-subtitle="Dernier export">
+              <span class="rank-label">{{ g.label }}</span>
+              <span class="num fw-semibold">{{ g.count | num }}</span>
+              <span class="rank-bar"><span style="width: {{ (g.count / top_count * 100) if top_count else 0 }}%"></span></span>
+            </a>
+          </li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+    {% endif %}
+    <div class="card chart-card">
+      <div class="card-body">
+        <div class="chart-head">
+          <div>
+            <h2 class="chart-title">Départs</h2>
+            {% if lost_roles %}
+            <p class="chart-hint">Comptes présents dans un export précédent mais plus dans le dernier. Cliquez pour les voir.</p>
+            {% else %}
+            <p class="chart-hint mb-0">
+              Un seul export importé pour l'instant : importez-en un nouveau plus tard pour voir qui est parti entre les deux.
+            </p>
+            {% endif %}
+          </div>
+        </div>
+        {% if lost_roles %}
+        {% set top_lost = lost_roles | map(attribute='lost') | max %}
+        <ol class="rank-list">
+          {% for r in lost_roles %}
+          <li>
+            <a class="rank-row" href="#" data-drill-url="/p/{{ platform.key }}/network/panel?group=lost&role={{ r.role }}"
+               data-drill-title="{{ r.lost_label }}" data-drill-subtitle="{{ r.label }} · absents de l'export au {{ r.as_of | date_fr }}">
+              <span class="rank-label">{{ r.lost_label }}</span>
+              <span class="num fw-semibold">{{ r.lost | num }}</span>
+              <span class="rank-bar"><span style="width: {{ (r.lost / top_lost * 100) if top_lost else 0 }}%"></span></span>
+            </a>
+          </li>
+          {% endfor %}
+        </ol>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if companies %}
+<div class="mb-4">
+  {% set companies_height = [220, (companies.top | length) * 30 + 40] | max %}
+  {{ m.chart_card("companiesChart", "Où travaillent vos relations",
+                  hint=(companies.with_company | num) ~ " relations sur " ~ (companies.total | num) ~ " indiquent leur entreprise dans le dernier export, chez "
+                       ~ (companies.companies | num) ~ " employeurs différents : les " ~ (companies.top | length)
+                       ~ " plus représentés. Cliquez sur une barre pour voir les personnes.",
+                  height=companies_height, values_toggle=True, values_on=True) }}
+</div>
+{% endif %}
+
+<div class="mb-4">
+  {% if d.total_events %}
+  {{ m.chart_card("timelineChart", "Relations dans le temps, par type",
+                  hint="Date de chaque relation (abonnement, ami ajouté, demande...), tous exports confondus. Cliquez sur une barre pour les voir.",
+                  height=300, values_toggle=True) }}
+  {% else %}
+  <div class="card">
+    <div class="card-body empty-state">
+      <i class="bi bi-calendar-x"></i>
+      <p class="mt-2 mb-0">Aucune relation datée sur cette période.</p>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/chart.umd.min.js"></script>
+<script>
+(function () {
+  var d = {{ dashboard | tojson }};
+  var source = {{ platform.key | tojson }};
+
+  function panel(params, title, subtitle) {
+    return { url: TB.url('/p/' + source + '/panel', params), title: title, subtitle: subtitle };
+  }
+
+  // Each line counts its own list (one import); a click on a point opens
+  // what that list gained during the bucket.
+  var growth = d.growth;
+  TB.line('growthChart', {
+    labels: growth.labels, series: growth.series, kind: 'number',
+    drill: function (index, series) {
+      var range = growth.ranges[index];
+      if (!series) {
+        return panel({ item_type: growth.series.map(function (s) { return s.keys[0]; }), date_from: range[0], date_to: range[1] },
+                     'Relations ajoutées', growth.labels[index]);
+      }
+      return panel({ item_type: series.keys, batch_id: series.batch_id, date_from: range[0], date_to: range[1] },
+                   series.label + ' ajoutés', growth.labels[index]);
+    },
+  });
+
+  // Where the latest list's connections work (LinkedIn); a bar opens them.
+  var companies = {{ companies | tojson }};
+  if (companies) {
+    TB.bar('companiesChart', {
+      labels: companies.top.map(function (c) { return c.label; }),
+      series: [{ label: 'Relations', slot: 0, data: companies.top.map(function (c) { return c.count; }) }],
+      horizontal: true, kind: 'number', showValues: true, axisLabel: 'Entreprise',
+      drill: function (index) {
+        var c = companies.top[index];
+        return { url: TB.url('/p/' + source + '/network/panel', { group: 'company', company: c.label }),
+                 title: c.label, subtitle: 'Relations du dernier export' };
+      },
+    });
+  }
+
+  var timeline = d.timeline;
+  TB.bar('timelineChart', {
+    labels: timeline.labels, series: timeline.series, stacked: true, kind: 'number',
+    drill: function (index, series) {
+      var range = timeline.ranges[index];
+      var params = series ? { item_type: series.keys } : { category: {{ network_categories | tojson }} };
+      params.date_from = range[0];
+      params.date_to = range[1];
+      return panel(params, series ? series.label : 'Relations', timeline.labels[index]);
+    },
+  });
+})();
+</script>
+{% endblock %}

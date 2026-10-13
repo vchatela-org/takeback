@@ -1,0 +1,40 @@
+{% if not threads %}
+<div class="empty-state py-4">
+  <i class="bi bi-chat-square-text"></i>
+  <p class="mt-2 mb-0">Aucune conversation sur cette période.</p>
+</div>
+{% else %}
+
+<div class="d-flex align-items-center justify-content-between mb-2">
+  <div class="small-caps">
+    {{ threads | length | num }} conversation{% if threads | length > 1 %}s{% endif %}{% if direction_label %} · {{ direction_label }}{% endif %}
+  </div>
+  <a href="{{ all_url }}" class="small">Tous les messages <i class="bi bi-arrow-right"></i></a>
+</div>
+
+<div>
+  {% for t in threads %}
+  {% set label = t.context or "(sans titre)" %}
+  {% set body %}
+    <div class="drill-main">
+      <div class="drill-text">
+        <strong>{{ label }}</strong>{% if t.group %} <span class="type-badge">groupe</span>{% endif %}
+      </div>
+      <div class="progress my-1" style="height: 6px;" role="presentation">
+        <div class="progress-bar" style="width: {{ t.share }}%;"></div>
+      </div>
+      <div class="drill-meta">{{ t.sent | num }} envoyé{% if t.sent != 1 %}s{% endif %} · {{ t.received | num }} reçu{% if t.received != 1 %}s{% endif %}</div>
+    </div>
+    <div class="drill-meta text-nowrap">{{ t.share | num(1) }} %</div>
+  {% endset %}
+  {% if t.url %}
+  <a class="drill-item" href="#" role="button" data-drill-url="{{ t.url }}"
+     data-drill-title="{{ label }}" data-drill-subtitle="{{ t.count | num }} message{% if t.count != 1 %}s{% endif %}{% if direction_label %} {{ direction_label }}{% endif %}">
+    {{ body }}
+  </a>
+  {% else %}
+  <div class="drill-item">{{ body }}</div>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endif %}

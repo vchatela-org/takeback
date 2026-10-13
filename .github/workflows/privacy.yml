@@ -1,0 +1,132 @@
+name: privacy
+
+# This repository is public: it ships a product, never its author's data.
+# The deny-list lives in .github/privacy-denylist.txt; the scan itself is
+# scripts/privacy-scan.sh, so the same control runs locally.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  denylist:
+    name: privacy deny-list
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # the history scan needs every blob
+
+      - name: Materialise the local deny-list supplement
+        # The supplement holds the author's own vocabulary, so it cannot be
+        # committed — it is gitignored — and that left this job blind to exactly
+        # the class it exists for: a real name or hostname passes the public
+        # patterns and only an operator's machine can see it. It comes from a
+        # repository secret instead, so CI runs the same patterns without
+        # publishing them.
+        #
+        # Fork pull requests receive no secrets, which is why the missing-supplement
+        # case is a warning here and a hard failure on `main` below: a pull request
+        # still gets a truthful report of what it did and did not cover, while the
+        # branch that everything merges into never runs blind.
+        env:
+          SUPPLEMENT: ${{ secrets.PRIVACY_DENYLIST_LOCAL }}
+        run: |
+          if [[ -n "$SUPPLEMENT" ]]; then
+            printf '%s\n' "$SUPPLEMENT" > .github/privacy-denylist.local.txt
+            echo "local supplement: present"
+          else
+            echo "::warning title=Partial privacy scan::PRIVACY_DENYLIST_LOCAL is unset (fork PR?), so this run covers the public patterns only."
+          fi
+
+      - name: The scan must not run blind on main
+        if: github.event_name != 'pull_request'
+        run: |
+          if [[ ! -s .github/privacy-denylist.local.txt ]]; then
+            echo "::error::PRIVACY_DENYLIST_LOCAL is unset — the deny-list scan would report 'clean' with half its patterns missing."
+            exit 1
+          fi
+
+      - name: Scan working tree
+        # `--redact-hits`: on a public run the matched content IS the leak, and a
+        # gate that prints it publishes what it exists to prevent.
+        run: ./scripts/privacy-scan.sh --redact-hits
+
+      - name: Scan full history
+        # History is permanent on a public repository, so a clean working tree
+        # is not enough — a leak three commits back is still a leak.
+        run: ./scripts/privacy-scan.sh --history --redact-hits
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The official gitleaks ACTION refuses to run for organization accounts
+      # without a paid licence key. The scanner itself is free: run the binary
+      # and skip the wrapper.
+      # Pinned deliberately — Dependabot does not watch this, so bump it by hand.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Scan full history
+        run: gitleaks detect --redact --no-banner --exit-code 1
+
+  selftest:
+    name: privacy gate self-test
+    runs-on: ubuntu-latest
+
+    # A negative control for the deny-list job above.
+    #
+    # A gate that has never been watched failing is decoration: a `paths:` filter,
+    # an emptied deny-list, a renamed file, a scanner that exits 0 on a parse error
+    # — each of those looks exactly like a passing build.
+    #
+    # So this job plants the one string the repository exists to keep out — the
+    # former project name — in a throwaway repository, runs the same scan against
+    # it, and fails if the scan accepts it. Nothing offending is ever committed
+    # here: the string is generated at run time and the worktree is removed.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: The deny-list must refuse the former name
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          trap 'rm -rf "$scratch"' EXIT
+
+          mkdir -p "$scratch/.github"
+          cp .github/privacy-denylist.txt "$scratch/.github/"
+          cp .privacyignore "$scratch/"
+          mkdir -p "$scratch/scripts"
+          cp scripts/privacy-scan.sh "$scratch/scripts/"
+
+          cd "$scratch"
+          git init -q
+          git config user.email selftest@example.invalid
+          git config user.name selftest
+          # Built from its parts so this very workflow file does not itself
+          # contain the literal the deny-list is there to catch.
+          printf 'TAKEBACK_%s_URL=yes\n' "$(printf 'data')$(printf 'lheim')" > planted.py
+          git add -A
+          git commit -qm "plant"
+
+          if ./scripts/privacy-scan.sh --worktree > /dev/null 2>&1; then
+            echo "::error::privacy-scan accepted a tree containing the former name — the gate does not bite."
+            exit 1
+          fi
+          echo "self-test: the scan rejected the planted former name, as it must"

@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Formules — {{ platform.label }}{% endblock %}
+
+{% set d = dashboard %}
+{% set panel_path = '/p/' ~ platform.key ~ '/formulas/panel' %}
+
+{% block content %}
+{% include "platform/_header.html" %}
+
+{% call m.filter_bar(request, date_from, date_to, years, granularity, undated) %}{% endcall %}
+
+{% if not d.total_boxes %}
+<div class="card">
+  <div class="card-body empty-state">
+    <i class="bi bi-box2"></i>
+    <p class="mt-2 mb-0">Aucune boîte sur cette période.</p>
+  </div>
+</div>
+{% else %}
+
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+  <div class="col">
+    {{ m.kpi("Boîtes", d.total_boxes | num, sub=(d.formulas | length | num) ~ " formule(s) différente(s)",
+             icon="bi-box2",
+             tooltip="Une boîte est un créneau payé. Un créneau annulé avant tout paiement n'en est pas une : il ne figure ni ici ni dans les achats.") }}
+  </div>
+  <div class="col">
+    {{ m.kpi("Plats livrés", d.total_plates | num, sub="dans ces boîtes", icon="bi-egg-fried",
+             tooltip="La somme des plats des boîtes payées : c'est la « formule » de chacune (10 plats, 14 plats...) qui la donne.") }}
+  </div>
+  <div class="col">
+    {{ m.kpi("Prix du plat", (d.total_spend / d.total_plates) | money(currency) if d.total_plates else "—",
+             sub="moyenne de la période", icon="bi-cash-coin",
+             tooltip="Ce qui a été payé divisé par le nombre de plats. Seazon facture un montant pour la boîte entière, jamais plat par plat : c'est le seul prix unitaire qui ne soit pas inventé.") }}
+  </div>
+  <div class="col">
+    {{ m.kpi("Formule habituelle", d.formulas[0].label, sub=(d.formulas[0].boxes | num) ~ " boîte(s)",
+             icon="bi-basket") }}
+  </div>
+</div>
+
+<div class="mb-4">
+  {{ m.chart_card("boxesChart", "Boîtes dans le temps, par formule",
+                  hint="Une barre par formule et par période. Cliquez sur une barre pour voir les boîtes qu'elle compte.",
+                  height=320, values_toggle=True) }}
+</div>
+
+<div class="mb-4">
+  {{ m.chart_card("unitPriceChart", "Prix du plat dans le temps",
+                  hint="Ce qu'a coûté un plat, formule par formule : une ligne s'interrompt quand aucune boîte de cette formule n'a été payée sur la période. Cliquez sur un point pour voir la boîte.",
+                  height=300, values_toggle=True) }}
+</div>
+
+<div class="card table-card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Formule</th>
+          <th class="num">Boîtes</th>
+          <th class="num">Plats</th>
+          <th class="num">Dépensé</th>
+          <th class="num">Prix/boîte</th>
+          <th class="num">Prix/plat</th>
+          <th>Dernière</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in d.formulas %}
+        <tr class="browse-row" role="button" tabindex="0"
+            data-drill-url="{{ url_with(request, panel_path, formula=f.label, granularity=None) }}"
+            data-drill-title="{{ f.label }}" data-drill-subtitle="{{ f.boxes | num }} boîte(s) · {{ f.plates | num }} plat(s)">
+          <td><span class="type-badge">{{ f.label }}</span></td>
+          <td class="num">{{ f.boxes | num }}</td>
+          <td class="num">{{ f.plates | num }}</td>
+          <td class="num">{{ f.spend | money(currency) }}</td>
+          <td class="num">{{ f.per_box | money(currency) }}</td>
+          <td class="num fw-semibold">{{ f.per_plate | money(currency) }}</td>
+          <td class="text-nowrap text-muted">{{ f.last | date_fr }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if d.total_boxes %}
+<script src="/static/chart.umd.min.js"></script>
+<script>
+(function () {
+  // Only the two chart payloads go through JSON: `formulas` carries the date
+  // of the last box, which Jinja's tojson can't write and the table renders
+  // with | date_fr.
+  var boxes = {{ d.boxes | tojson }};
+  var prices = {{ d.unit_price | tojson }};
+  var currency = {{ (currency or '') | tojson }};
+  var source = {{ platform.key | tojson }};
+
+  // One box is one row of `seazon_order`: the bar of a formula opens the
+  // boxes it counts, and the point of a line the boxes behind that average.
+  function boxPanel(formula, range, subtitle) {
+    return {
+      url: TB.url('/p/' + source + '/formulas/panel', {
+        formula: formula, date_from: range[0], date_to: range[1],
+      }),
+      title: formula || 'Toutes les formules',
+      subtitle: subtitle,
+    };
+  }
+
+  TB.bar('boxesChart', {
+    labels: boxes.labels, series: boxes.series, stacked: true, kind: 'number',
+    drill: function (index, series) {
+      return boxPanel(series ? series.keys[0] : null, boxes.ranges[index], boxes.labels[index]);
+    },
+  });
+
+  TB.line('unitPriceChart', {
+    labels: prices.labels, series: prices.series, kind: 'money', currency: currency,
+    drill: function (index, series) {
+      // An interrupted line has nothing to open: no box, no average.
+      if (!series || series.data[index] === null) return null;
+      return boxPanel(series.keys[0], prices.ranges[index], prices.labels[index]);
+    },
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

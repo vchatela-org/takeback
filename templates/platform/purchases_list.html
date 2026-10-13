@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Liste des achats — {{ platform.label }}{% endblock %}
+
+{% set dim_label = group_dimensions[group_by] %}
+
+{% block content %}
+{% include "platform/_header.html" %}
+
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+  <div class="btn-group btn-group-sm" role="group" aria-label="Vue">
+    <a href="{{ url_with(request, '/p/' ~ platform.key ~ '/purchases', group=None, q=None, amount_min=None, amount_max=None, sort=None, direction=None, page=None) }}"
+       class="btn btn-outline-secondary"><i class="bi bi-bar-chart me-1"></i>Tableau de bord</a>
+    <a href="#" class="btn btn-outline-secondary active" aria-current="page"><i class="bi bi-list-ul me-1"></i>Liste des achats</a>
+  </div>
+</div>
+
+{% call m.filter_bar(request, date_from, date_to, years, undated=undated) %}
+  <select name="group_by" class="form-select form-select-sm" aria-label="Dimension" data-auto-submit>
+    {% for key, label in group_dimensions.items() if key != 'none' %}
+    <option value="{{ key }}" {% if group_by == key %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  {% if groups | length > 1 %}
+  {# Several values at once (the "Autres" slice of a chart): kept as-is, removable as a whole. #}
+  {% for g in groups %}<input type="hidden" name="group" value="{{ g }}" />{% endfor %}
+  <a class="chip active" href="{{ url_with(request, group=None, page=None) }}" title="{{ groups | join(', ') }}">
+    {{ groups | length }} valeurs <i class="bi bi-x"></i>
+  </a>
+  {% else %}
+  <select name="group" class="form-select form-select-sm" aria-label="{{ dim_label }}" style="max-width: 16rem;" data-auto-submit>
+    <option value="">{{ dim_label }} : tous</option>
+    {% for value in group_values %}
+    <option value="{{ value }}" {% if groups and groups[0] == value %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  <input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Produit ou n° de commande…"
+         aria-label="Rechercher un produit" style="min-width: 14rem;" />
+  <div class="range-inputs">
+    <input type="text" inputmode="decimal" name="amount_min" value="{{ amount_min }}" class="form-control form-control-sm"
+           placeholder="Min" aria-label="Montant minimum" style="width: 5.5rem;" />
+    <span class="text-muted">–</span>
+    <input type="text" inputmode="decimal" name="amount_max" value="{{ amount_max }}" class="form-control form-control-sm"
+           placeholder="Max" aria-label="Montant maximum" style="width: 5.5rem;" />
+  </div>
+  <input type="hidden" name="sort" value="{{ sort }}" />
+  <input type="hidden" name="direction" value="{{ direction }}" />
+{% endcall %}
+
+<div class="d-flex flex-wrap gap-3 align-items-baseline mb-3">
+  <span class="fs-5 fw-semibold">{{ totals.amount | money(currency) }}</span>
+  <span class="text-muted">{{ totals.lines | num }} article(s) · {{ totals.orders | num }} commande(s)</span>
+  {% if groups or q or amount_min or amount_max or date_from or date_to %}
+  <a class="small ms-auto" href="{{ url_with(request, date_from=None, date_to=None, group=None, q=None, amount_min=None, amount_max=None, page=None) }}">
+    <i class="bi bi-x-circle me-1"></i>Réinitialiser les filtres
+  </a>
+  {% endif %}
+</div>
+
+{% if not purchases %}
+<div class="card">
+  <div class="card-body empty-state">
+    <i class="bi bi-inbox"></i>
+    <p class="mt-2 mb-0">Aucun achat ne correspond à ces filtres.</p>
+  </div>
+</div>
+{% else %}
+<div class="card table-card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          {{ m.sort_header(request, 'date', 'Date', sort, direction) }}
+          {{ m.sort_header(request, 'product', 'Produit', sort, direction) }}
+          {{ m.sort_header(request, 'group', dim_label, sort, direction) }}
+          <th>Commande</th>
+          {{ m.sort_header(request, 'amount', 'Montant', sort, direction, 'num') }}
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in purchases %}
+        <tr onclick="window.location='/items/{{ p.id }}'" class="browse-row">
+          <td class="text-nowrap text-muted">{{ p.timestamp | date_fr }}</td>
+          <td class="browse-content">
+            <a href="/items/{{ p.id }}" class="text-reset text-decoration-none">{{ p.product or "(sans nom)" }}</a>
+            {% if p.quantity and p.quantity != '1' %}<span class="text-muted small">×{{ p.quantity }}</span>{% endif %}
+          </td>
+          <td><span class="type-badge">{{ p.group }}</span></td>
+          <td class="small">
+            {% if p.order_id %}
+            <a href="/browse?source={{ platform.key }}&context={{ p.order_id | urlencode }}" class="text-muted" onclick="event.stopPropagation()"
+               title="Toute la commande">{{ p.order_id }}</a>
+            {% endif %}
+          </td>
+          <td class="num fw-semibold">{{ p.amount | money(currency) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{ m.pagination(request, page, page_count) }}
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,59 @@
+{% if not purchases %}
+<div class="empty-state py-4">
+  <i class="bi bi-inbox"></i>
+  <p class="mt-2 mb-0">Aucun achat ici.</p>
+</div>
+{% else %}
+
+<div class="drill-summary">
+  <div>
+    <div class="kpi-label">Total</div>
+    <div class="kpi-value">{{ totals.amount | money(currency) }}</div>
+  </div>
+  <div>
+    <div class="kpi-label">Articles</div>
+    <div class="kpi-value">{{ totals.lines | num }}</div>
+  </div>
+  <div>
+    <div class="kpi-label">Commandes</div>
+    <div class="kpi-value">{{ totals.orders | num }}</div>
+  </div>
+</div>
+
+{% if period_series | length > 1 %}
+<div class="mb-4">
+  <div class="small-caps mb-2">Dépenses par période</div>
+  <div class="spark">
+    {% for p in period_series %}
+    <div class="spark-col" title="{{ p.label }} : {{ p.value | money(currency) }}">
+      <span style="height: {{ (p.value / period_max * 100) if period_max else 0 }}%"></span>
+      <small>{{ p.label }}</small>
+      <small>{{ p.value | money(currency, 0) }}</small>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="d-flex align-items-center justify-content-between mb-1">
+  <div class="small-caps">
+    {% if totals.lines > limit %}Les {{ limit }} plus chers sur {{ totals.lines | num }}{% else %}Du plus cher au moins cher{% endif %}
+  </div>
+  {% if list_url %}<a href="{{ list_url }}" class="small">Ouvrir dans la liste <i class="bi bi-box-arrow-up-right"></i></a>{% endif %}
+</div>
+
+<div>
+  {% for p in purchases %}
+  <a class="drill-item" href="/items/{{ p.id }}">
+    <div class="drill-main">
+      <div class="drill-text">{{ p.product or "(sans nom)" }}</div>
+      <div class="drill-meta">
+        {{ p.timestamp | date_fr }}{% if p.quantity and p.quantity != '1' %} · ×{{ p.quantity }}{% endif %}
+        {% if group_by != 'category' %} · {{ p.category }}{% endif %}
+      </div>
+    </div>
+    <div class="num fw-semibold">{{ p.amount | money(currency) }}</div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}

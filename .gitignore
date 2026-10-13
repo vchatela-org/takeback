@@ -1,0 +1,20 @@
+.env
+__pycache__/
+*.pyc
+data/
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+sample_data/
+
+# Test and tooling caches.
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# The private half of the privacy deny-list: it holds the author's own
+# vocabulary, so it must never be committed. The scan reads it from disk
+# locally and from the PRIVACY_DENYLIST_LOCAL secret in CI.
+.github/privacy-denylist.local.txt

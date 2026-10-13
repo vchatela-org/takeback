@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Publications — {{ platform.label }}{% endblock %}
+
+{% set d = dashboard %}
+{% set t = d.totals %}
+{# LinkedIn's export carries no media file for its posts: a photo/video
+   breakdown would only read 0 / 0 / everything. #}
+{% set has_media = media_options | rejectattr("value", "equalto", "text") | list | length > 0 %}
+
+{% block content %}
+{% include "platform/_header.html" %}
+
+{% call m.filter_bar(request, date_from, date_to, years, granularity, undated) %}
+  {% if media_options | length > 1 %}
+  {{ m.multi_select(request, "media", media_options, selected_media, "Tous les médias", "bi-camera", "types") }}
+  {% endif %}
+{% endcall %}
+
+{% if t.posts == 0 %}
+<div class="card">
+  <div class="card-body empty-state">
+    <i class="bi bi-images"></i>
+    <p class="mt-2 mb-0">Aucune publication sur cette période{% if selected_media %} avec ces médias{% endif %}.</p>
+  </div>
+</div>
+{% else %}
+
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+  <div class="col">{{ m.kpi("Publications", t.posts | num, icon="bi-images") }}</div>
+  {% if has_media %}
+  <div class="col">{{ m.kpi("Photos", t.photos | num, sub="publiées", icon="bi-camera") }}</div>
+  <div class="col">{{ m.kpi("Vidéos", t.videos | num, sub="publiées", icon="bi-camera-video") }}</div>
+  {% if t.text %}
+  <div class="col">{{ m.kpi("Sans média", t.text | num, sub="texte ou lien seul", icon="bi-file-text") }}</div>
+  {% else %}
+  <div class="col">{{ m.kpi("Médias par publication", ((t.photos + t.videos) / t.posts) | num(1), sub="en moyenne, carrousels compris", icon="bi-collection") }}</div>
+  {% endif %}
+  {% endif %}
+</div>
+
+<div class="mb-4">
+  {{ m.chart_card("postsChart", "Publications dans le temps",
+                  hint=("Par type de média (une publication avec une vidéo compte comme vidéo). " if has_media else "") ~ "Cliquez sur une barre pour les voir.",
+                  height=300, values_toggle=True) }}
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-xxl-4">
+    {{ m.chart_card("monthChart", "Publications par mois de l'année",
+                    hint="Toutes les années de la période réunies. Cliquez sur une barre pour les voir.",
+                    height=340, values_toggle=True, values_on=True) }}
+  </div>
+  <div class="col-xxl-8">
+    {{ m.heatmap_card(request, "Jours et heures de publication",
+                      "Publications par jour de la semaine et heure. Cliquez sur une case pour les voir.",
+                      d.heatmap, d.heatmap_max, weekday_names, '/p/' ~ platform.key ~ '/posts/panel', "publications") }}
+  </div>
+</div>
+
+{% if d.gallery %}
+<div class="card chart-card mb-4">
+  <div class="card-body">
+    <div class="chart-head">
+      <div>
+        <h2 class="chart-title">Dernières publications</h2>
+        <p class="chart-hint">
+          {% if d.gallery_total > d.gallery | length %}Les {{ d.gallery | length }} plus récentes avec média sur {{ d.gallery_total | num }}{% else %}{{ d.gallery_total | num }} publication(s) avec média{% endif %}
+          sur la période.
+        </p>
+      </div>
+      <a href="{{ url_with(request, '/browse', source=platform.key, item_type='post', granularity=None) }}" class="btn btn-sm btn-ghost">
+        Toutes les publications <i class="bi bi-arrow-right"></i>
+      </a>
+    </div>
+    <div class="post-grid">
+      {% for g in d.gallery %}
+      <a class="post-tile" href="/items/{{ g.id }}"
+         title="{{ g.timestamp | date_fr }}{% if g.content %} — {{ g.content[:120] }}{% endif %}">
+        {% if g.thumb %}
+        <img src="{{ g.thumb }}" loading="lazy" alt="Publication du {{ g.timestamp | date_fr }}" />
+        {% else %}
+        <span class="post-icon"><i class="bi {{ 'bi-play-circle' if g.kind == 'video' else 'bi-image' }}"></i></span>
+        {% endif %}
+        {% if g.kind == 'video' and g.thumb %}<span class="post-badge"><i class="bi bi-play-fill"></i></span>
+        {% elif g.media_count > 1 %}<span class="post-badge"><i class="bi bi-collection"></i> {{ g.media_count }}</span>{% endif %}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/chart.umd.min.js"></script>
+<script>
+(function () {
+  var d = {{ {'labels': dashboard.labels, 'ranges': dashboard.ranges, 'series': dashboard.series,
+              'month_labels': dashboard.month_labels, 'month_series': dashboard.month_series} | tojson }};
+  var source = {{ platform.key | tojson }};
+  var period = { date_from: {{ date_from | tojson }}, date_to: {{ date_to | tojson }},
+                 media: {{ selected_media | tojson }}, include_1970: {{ (1 if undated.included else none) | tojson }} };
+  var periodLabel = {{ (date_from[:4] if date_from and date_from[:4] == date_to[:4] else ('Toute la période' if not date_from and not date_to else (date_from[:10] ~ ' → ' ~ date_to[:10]))) | tojson }};
+
+  function postsPanel(params, title, subtitle) {
+    var query = Object.assign({}, period);
+    Object.keys(params).forEach(function (key) { query[key] = params[key]; });
+    return { url: TB.url('/p/' + source + '/posts/panel', query), title: title, subtitle: subtitle };
+  }
+
+  TB.bar('postsChart', {
+    labels: d.labels, series: d.series, stacked: true, kind: 'number',
+    drill: function (index, series) {
+      var range = d.ranges[index];
+      return postsPanel({ kind: series ? series.keys[0] : null, date_from: range[0], date_to: range[1] },
+                        series ? 'Publications · ' + series.label : 'Publications', d.labels[index]);
+    },
+  });
+
+  TB.bar('monthChart', {
+    labels: d.month_labels, series: d.month_series, stacked: true, horizontal: true, kind: 'number', showValues: true,
+    axisLabel: 'Mois',
+    drill: function (index, series) {
+      return postsPanel({ kind: series ? series.keys[0] : null, month: index + 1 },
+                        'Publications en ' + d.month_labels[index] + (series ? ' · ' + series.label : ''), periodLabel);
+    },
+  });
+})();
+</script>
+{% endblock %}

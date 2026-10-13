@@ -1,0 +1,11 @@
+services:
+  takeback:
+    build: .
+    container_name: takeback
+    ports:
+      - "8010:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TAKEBACK_DEBUG=false
+    restart: unless-stopped

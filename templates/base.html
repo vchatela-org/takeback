@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="{{ locale() }}" data-bs-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Takeback{% endblock %} – Takeback</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0b0b'/%3E%3Cpath d='M8 11h16v3H8zm1 4h14v8a1 1 0 0 1-1 1H10a1 1 0 0 1-1-1zm4 2v2h6v-2z' fill='%23fff'/%3E%3C/svg%3E" />
+  <script>
+    // Before any paint: the saved theme, else the OS preference -- no flash
+    // of the wrong theme on load.
+    (function () {
+      var theme = null;
+      try { theme = localStorage.getItem('tb-theme'); } catch (e) {}
+      if (!theme) theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-bs-theme', theme);
+      // Privacy mode (blurs the content while sharing a screen), same
+      // before-paint treatment so a shared screen never shows data first.
+      var privacy = null;
+      try { privacy = localStorage.getItem('tb-privacy'); } catch (e) {}
+      if (privacy === '1') document.documentElement.classList.add('tb-privacy');
+    })();
+  </script>
+
+  <!-- Bootstrap 5, Bootstrap Icons, HTMX, Chart.js: all served locally, never from a CDN -->
+  <link rel="stylesheet" href="/static/bootstrap.min.css" />
+  <link rel="stylesheet" href="/static/bootstrap-icons.min.css" />
+  <script src="/static/htmx.min.js"></script>
+
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+{% set path = request.url.path %}
+
+<aside class="app-sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="appSidebar" aria-label="{{ _('a11y.navigation') }}">
+  <div class="sidebar-inner">
+    <div class="d-flex align-items-center justify-content-between">
+      <a class="brand" href="/">
+        <span class="brand-mark"><i class="bi bi-archive"></i></span>Takeback
+      </a>
+      <button type="button" class="btn-close d-lg-none mb-3" data-bs-dismiss="offcanvas" data-bs-target="#appSidebar" aria-label="{{ _('a11y.close') }}"></button>
+    </div>
+
+    <form action="/browse" method="get" class="sidebar-search position-relative px-1 mb-2" role="search">
+      <i class="bi bi-search"></i>
+      <input type="search" name="q" class="form-control form-control-sm" placeholder="{{ _('search.placeholder') }}"
+             value="{{ request.query_params.get('q', '') if path == '/browse' else '' }}" aria-label="{{ _('search.label') }}" />
+    </form>
+
+    <nav>
+      <a class="side-link {% if path == '/' %}active{% endif %}" href="/">
+        <i class="bi bi-house"></i>{{ _('nav.home') }}
+      </a>
+
+      <div class="nav-section small-caps">{{ _('nav.platforms') }}</div>
+      {% for p, has_data in nav_platforms() %}
+      <a class="side-link {% if path == '/p/' ~ p.key or path.startswith('/p/' ~ p.key ~ '/') %}active{% endif %} {% if not has_data %}is-empty{% endif %}"
+         href="/p/{{ p.key }}" style="--platform-color: {{ p.color }}">
+        <i class="bi {{ p.icon }} platform-dot"></i>{{ p.label }}
+      </a>
+      {% endfor %}
+      {% for p in planned_platforms() %}
+      <span class="side-link is-planned" aria-disabled="true" title="{{ _('nav.soon_title', platform=p.label) }}">
+        <i class="bi {{ p.icon }}"></i>{{ p.label }}<span class="planned-badge">{{ _('nav.soon') }}</span>
+      </span>
+      {% endfor %}
+
+      <div class="nav-section small-caps">{{ _('nav.tools') }}</div>
+      <a class="side-link {% if path == '/browse' or path.startswith('/items/') %}active{% endif %}" href="/browse">
+        <i class="bi bi-search"></i>{{ _('nav.search') }}
+      </a>
+      <a class="side-link {% if path.startswith('/imports') %}active{% endif %}" href="/imports">
+        <i class="bi bi-cloud-arrow-up"></i>{{ _('nav.imports') }}
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <span>v{{ app_version }}</span>
+      <div class="d-flex gap-1">
+        <button type="button" class="btn btn-sm btn-ghost" data-tb-privacy-toggle aria-pressed="false"
+                title="{{ _('privacy.toggle') }}" aria-label="{{ _('privacy.toggle') }}">
+          <i class="bi bi-eye-slash"></i>
+        </button>
+        <button type="button" class="btn btn-sm btn-ghost" data-tb-theme-toggle title="{{ _('theme.toggle') }}"
+                aria-label="{{ _('theme.toggle') }}">
+          <i class="bi bi-moon-stars theme-when-light"></i><i class="bi bi-sun theme-when-dark"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<div class="app-main">
+  <div class="app-topbar d-lg-none">
+    <div class="d-flex align-items-center gap-2 px-3 py-2">
+      <button class="btn btn-ghost btn-sm" type="button" data-bs-toggle="offcanvas" data-bs-target="#appSidebar" aria-label="{{ _('a11y.menu') }}">
+        <i class="bi bi-list fs-5"></i>
+      </button>
+      <a class="brand p-0" href="/"><span class="brand-mark"><i class="bi bi-archive"></i></span>Takeback</a>
+    </div>
+  </div>
+
+  <main class="app-content">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+{# Drill-down panel: whatever a click on a chart, a heatmap cell or a ranked
+   row opens -- the items behind that number. Filled by static/app.js. #}
+<div class="offcanvas offcanvas-end drill-panel" tabindex="-1" id="drillPanel" aria-labelledby="drillTitle">
+  <div class="offcanvas-header">
+    <div class="me-3">
+      <h2 class="drill-title" id="drillTitle"></h2>
+      <p class="drill-subtitle"></p>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="{{ _('a11y.close') }}"></button>
+  </div>
+  <div class="offcanvas-body drill-body"></div>
+</div>
+
+<script src="/static/bootstrap.bundle.min.js"></script>
+<script src="/static/app.js"></script>
+<script>
+// Instagram post/reel preview, loaded on click only: delegated on document
+// body so it also picks up buttons added later (chat bubbles loaded via
+// htmx "load older messages"), not just ones present at page load.
+document.body.addEventListener('click', function (evt) {
+  const btn = evt.target.closest('.load-instagram-preview');
+  if (!btn) return;
+  const wrap = btn.closest('[data-instagram-url]');
+  if (!wrap) return;
+  const url = wrap.dataset.instagramUrl;
+  const slot = wrap.querySelector('.instagram-embed-slot');
+  // Built as a node, not assembled as an HTML string: the URL comes from an
+  // imported archive, and string concatenation into innerHTML is one widened
+  // regex away from letting that content write its own attributes.
+  const blockquote = document.createElement('blockquote');
+  blockquote.className = 'instagram-media';
+  blockquote.dataset.instgrmPermalink = url;
+  blockquote.dataset.instgrmVersion = '14';
+  blockquote.style.margin = '0';
+  slot.replaceChildren(blockquote);
+  btn.remove();
+  if (window.instgrm) {
+    window.instgrm.Embeds.process();
+  } else {
+    const script = document.createElement('script');
+    script.src = 'https://www.instagram.com/embed.js';
+    script.async = true;
+    document.body.appendChild(script);
+  }
+});
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

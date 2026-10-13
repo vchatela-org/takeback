@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Imports{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Imports</h1>
+    <p class="page-subtitle">
+      Les fichiers importés. Leur contenu se consulte par plateforme : un nouvel export
+      d'une plateforme déjà importée s'ajoute à son historique, sans doublons.
+    </p>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <form id="uploadForm">
+      <label class="dropzone" id="dropzone" for="uploadFiles">
+        <i class="bi bi-cloud-arrow-up"></i>
+        <div class="fw-semibold mt-2">Déposez vos archives .zip ici, ou cliquez pour les choisir</div>
+        <div class="small text-muted mt-1">
+          {% for p in supported %}{{ p.label }}{% if not loop.last %} · {% endif %}{% endfor %}
+          — la plateforme est détectée automatiquement.
+        </div>
+        <input type="file" id="uploadFiles" accept=".zip" multiple class="visually-hidden" />
+      </label>
+      <ul id="uploadList" class="list-unstyled small mt-3 mb-0" hidden></ul>
+      <div class="d-flex align-items-center gap-3 mt-3">
+        <button type="submit" id="uploadSubmit" class="btn btn-primary" disabled>
+          <i class="bi bi-upload me-1"></i>Importer
+        </button>
+        <span class="small text-muted">
+          Export découpé en plusieurs zips (fréquent chez Facebook) : sélectionnez-les tous en une fois.
+          Chaque fichier est envoyé séparément puis fusionné avant analyse.
+        </span>
+      </div>
+    </form>
+    <div id="uploadProgress" class="mt-3" hidden>
+      <div class="progress" style="height: 0.6rem;" role="progressbar" aria-label="Progression de l'envoi">
+        <div id="uploadProgressBar" class="progress-bar" style="width: 0%"></div>
+      </div>
+      <p id="uploadProgressText" class="small text-muted mb-0 mt-1"></p>
+    </div>
+    <div id="uploadError" class="alert alert-danger mt-3 mb-0" hidden></div>
+  </div>
+</div>
+
+{% if syncs %}
+<div class="card mb-4">
+  <div class="card-body pb-0">
+    <h2 class="chart-title mb-1">Synchronisations</h2>
+    <p class="chart-hint mb-0">Outils que Takeback alimente avec vos données.</p>
+  </div>
+  <ul class="list-group list-group-flush mt-2">
+    {% for s in syncs %}
+    {% set last = s.runs[0] if s.runs else None %}
+    <li class="list-group-item d-flex flex-wrap align-items-center gap-3 py-3">
+      <div class="me-auto" style="flex: 1 1 28rem; min-width: 0;">
+        <div class="fw-semibold">
+          <i class="bi {{ s.job.icon }} me-1"></i>{{ s.job.label }}
+          <span class="small text-muted fw-normal ms-2">{{ s.job.schedule_label() if s.configured else "Non configuré" }}</span>
+        </div>
+        <div class="small mt-1">
+          {% if last %}
+          {{ m.sync_badge(last.status) }}
+          <span class="text-muted ms-1">{{ last.started_at | date_fr(True) }} UTC</span>
+          {% if last.message %}<span class="ms-1">· {{ last.message }}</span>{% endif %}
+          {% else %}<span class="text-muted">Jamais exécuté</span>{% endif %}
+        </div>
+      </div>
+      {% if s.configured %}
+      <div class="d-flex gap-2 flex-shrink-0">
+        <form method="post" action="/sync/{{ s.job.kind }}">
+          <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-arrow-repeat me-1"></i>{{ s.job.button }}</button>
+        </form>
+        {% if 'rebuild' in s.job.options %}
+        <form method="post" action="/sync/{{ s.job.kind }}?rebuild=true"
+              onsubmit="return confirm('Effacer toutes les séries de Takeback dans InfluxDB, puis tout renvoyer ?')">
+          <button type="submit" class="btn btn-sm btn-ghost" title="Efface les séries de Takeback puis renvoie tout">Reconstruire</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if not batches %}
+<div class="empty-state">
+  <i class="bi bi-inbox"></i>
+  <p class="mt-2">Aucun import pour l'instant.</p>
+</div>
+{% else %}
+<div class="card table-card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Fichier</th>
+          <th>Plateforme</th>
+          <th>Statut</th>
+          <th class="num">Éléments</th>
+          <th class="num">Importé le</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for batch in batches %}
+        {% set bp = platform(batch.source) if batch.source else None %}
+        <tr>
+          <td class="text-truncate" style="max-width: 420px;"><a href="/imports/{{ batch.id }}">{{ batch.original_filename }}</a></td>
+          <td>
+            {% if bp %}
+            <a href="/p/{{ bp.key }}" class="text-reset text-decoration-none">
+              <i class="bi {{ bp.icon }} me-1" style="color: {{ bp.color }}"></i>{{ bp.label }}
+            </a>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>{{ m.status_badge(batch.status) }}</td>
+          <td class="num">{{ batch.item_count | num }}</td>
+          <td class="num text-muted">{{ batch.created_at | date_fr(True) }}</td>
+          <td class="text-end">
+            <form method="post" action="/imports/{{ batch.id }}/delete"
+                  onsubmit="return confirm('Supprimer cet import et toutes ses données ?')" class="d-inline">
+              <button type="submit" class="btn btn-ghost btn-sm" title="Supprimer" aria-label="Supprimer">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const form = document.getElementById('uploadForm');
+  const input = document.getElementById('uploadFiles');
+  const dropzone = document.getElementById('dropzone');
+  const list = document.getElementById('uploadList');
+  const submitBtn = document.getElementById('uploadSubmit');
+  const progressWrap = document.getElementById('uploadProgress');
+  const progressBar = document.getElementById('uploadProgressBar');
+  const progressText = document.getElementById('uploadProgressText');
+  const errorBox = document.getElementById('uploadError');
+
+  function humanSize(bytes) {
+    const units = ['o', 'Ko', 'Mo', 'Go'];
+    let i = 0;
+    while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+    return bytes.toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' ' + units[i];
+  }
+
+  function showSelection() {
+    const files = Array.from(input.files || []);
+    list.replaceChildren();
+    files.forEach(function (f) {
+      const li = document.createElement('li');
+      li.className = 'd-flex justify-content-between border-bottom py-1';
+      const name = document.createElement('span');
+      name.textContent = f.name;
+      const size = document.createElement('span');
+      size.className = 'text-muted';
+      size.textContent = humanSize(f.size);
+      li.append(name, size);
+      list.appendChild(li);
+    });
+    list.hidden = !files.length;
+    submitBtn.disabled = !files.length;
+  }
+
+  input.addEventListener('change', showSelection);
+  ['dragenter', 'dragover'].forEach(function (type) {
+    dropzone.addEventListener(type, function (evt) { evt.preventDefault(); dropzone.classList.add('is-dragover'); });
+  });
+  ['dragleave', 'drop'].forEach(function (type) {
+    dropzone.addEventListener(type, function () { dropzone.classList.remove('is-dragover'); });
+  });
+  dropzone.addEventListener('drop', function (evt) {
+    evt.preventDefault();
+    input.files = evt.dataTransfer.files;
+    showSelection();
+  });
+
+  function setProgress(done, total, label) {
+    const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
+    progressBar.style.width = pct + '%';
+    progressText.textContent = pct + ' % — ' + label;
+  }
+
+  // XHR rather than fetch: only XHR reports upload progress, which is what
+  // matters on a multi-GB export.
+  function sendFile(batchId, file, onProgress) {
+    return new Promise(function (resolve, reject) {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/imports/' + batchId + '/upload-file');
+      xhr.upload.addEventListener('progress', function (e) { if (e.lengthComputable) onProgress(e.loaded); });
+      xhr.addEventListener('load', function () {
+        if (xhr.status >= 200 && xhr.status < 300) return resolve();
+        let detail = null;
+        try { detail = JSON.parse(xhr.responseText).detail; } catch (e) {}
+        reject(new Error(detail || 'Échec de l’envoi de ' + file.name));
+      });
+      xhr.addEventListener('error', function () { reject(new Error('Erreur réseau pendant l’envoi de ' + file.name)); });
+      const fd = new FormData();
+      fd.append('file', file);
+      xhr.send(fd);
+    });
+  }
+
+  form.addEventListener('submit', async function (evt) {
+    evt.preventDefault();
+    const files = Array.from(input.files || []);
+    if (!files.length) return;
+
+    errorBox.hidden = true;
+    progressWrap.hidden = false;
+    submitBtn.disabled = true;
+    input.disabled = true;
+
+    const totalBytes = files.reduce(function (sum, f) { return sum + f.size; }, 0);
+    let sentBytes = 0;
+    try {
+      setProgress(0, totalBytes, 'Préparation de l’import…');
+      const startResp = await fetch('/imports/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filenames: files.map(function (f) { return f.name; }) }),
+      });
+      if (!startResp.ok) throw new Error((await startResp.json()).detail || 'Échec de la création de l’import');
+      const { batch_id } = await startResp.json();
+
+      for (let i = 0; i < files.length; i++) {
+        const label = 'Envoi du fichier ' + (i + 1) + '/' + files.length + ' : ' + files[i].name;
+        await sendFile(batch_id, files[i], function (loaded) { setProgress(sentBytes + loaded, totalBytes, label); });
+        sentBytes += files[i].size;
+      }
+
+      setProgress(totalBytes, totalBytes, 'Fusion et lancement de l’analyse…');
+      const finalizeResp = await fetch('/imports/' + batch_id + '/finalize', { method: 'POST' });
+      if (!finalizeResp.ok) throw new Error((await finalizeResp.json()).detail || 'Échec du lancement de l’analyse');
+
+      window.location.href = '/imports/' + batch_id;
+    } catch (err) {
+      progressWrap.hidden = true;
+      errorBox.hidden = false;
+      errorBox.textContent = err.message || 'Une erreur est survenue pendant l’envoi.';
+      submitBtn.disabled = false;
+      input.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}
