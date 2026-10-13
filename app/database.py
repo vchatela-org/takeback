@@ -1,7 +1,9 @@
 import logging
 import os
 import threading
+import uuid
 from pathlib import Path
+from typing import List
 
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
@@ -132,3 +134,27 @@ def anonymized_dir() -> Path:
     path = Path(settings.data_dir) / "anonymized"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+# Every file of a batch is named by the batch's number and nothing else. The
+# int() below holds that whatever a caller hands in -- a route's path
+# parameter included -- so no batch path can be steered out of its directory.
+
+def batch_extract_dir(batch_id: int) -> Path:
+    """Where a batch's archives are extracted (kept for re-analysis)."""
+    return imports_dir() / str(int(batch_id))
+
+
+def new_batch_upload(batch_id: int) -> Path:
+    """A fresh path for one more uploaded zip of a batch."""
+    return uploads_dir() / f"{int(batch_id)}-{uuid.uuid4().hex}.zip"
+
+
+def batch_uploads(batch_id: int) -> List[Path]:
+    """Every zip uploaded so far for a batch, in name order."""
+    return sorted(uploads_dir().glob(f"{int(batch_id)}-*.zip"))
+
+
+def anonymized_artifact(batch_id: int, suffix: str) -> Path:
+    """One of a batch's anonymized-export files: the .zip, or a state marker."""
+    return anonymized_dir() / f"{int(batch_id)}{suffix}"

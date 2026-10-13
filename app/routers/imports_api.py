@@ -1,4 +1,3 @@
-import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
@@ -6,7 +5,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app import crud, dedup, processing, anonymize, limits
-from app.database import get_db, uploads_dir, imports_dir, anonymized_dir
+from app.database import anonymized_artifact, batch_extract_dir, get_db, new_batch_upload
 from app.schemas import ImportBatchOut
 
 router = APIRouter(prefix="/api/imports", tags=["imports"])
@@ -50,7 +49,7 @@ async def create_import(
 
     upload_paths = []
     for file in files:
-        upload_path = uploads_dir() / f"{batch_id}-{uuid.uuid4().hex}.zip"
+        upload_path = new_batch_upload(batch_id)
         try:
             await limits.stream_upload(file, upload_path, file.filename)
             limits.check_batch_upload_size([*upload_paths, upload_path])
@@ -84,7 +83,7 @@ def reanalyze_import(batch_id: int, background_tasks: BackgroundTasks, db: Sessi
     batch = crud.get_batch(db, batch_id)
     if not batch:
         raise HTTPException(status_code=404, detail="Import introuvable")
-    extract_dir = imports_dir() / str(batch_id)
+    extract_dir = batch_extract_dir(batch_id)
     if not extract_dir.exists() or not any(extract_dir.iterdir()):
         raise HTTPException(status_code=400, detail="Aucun fichier extrait à réanalyser pour cet import")
     background_tasks.add_task(processing.reanalyze_import, batch_id)
@@ -96,7 +95,7 @@ def anonymize_import(batch_id: int, background_tasks: BackgroundTasks, db: Sessi
     batch = crud.get_batch(db, batch_id)
     if not batch:
         raise HTTPException(status_code=404, detail="Import introuvable")
-    extract_dir = imports_dir() / str(batch_id)
+    extract_dir = batch_extract_dir(batch_id)
     if not extract_dir.exists():
         raise HTTPException(status_code=400, detail="Fichiers de l'import introuvables")
     background_tasks.add_task(anonymize.run_anonymize_job, batch_id, extract_dir, batch.source)
@@ -114,7 +113,7 @@ def anonymize_state(batch_id: int):
 
 @router.get("/{batch_id}/anonymize/download")
 def download_anonymized(batch_id: int):
-    zip_path = anonymized_dir() / f"{batch_id}.zip"
+    zip_path = anonymized_artifact(batch_id, ".zip")
     if not zip_path.exists():
         raise HTTPException(status_code=404, detail="Archive anonymisée introuvable")
     return FileResponse(zip_path, filename=f"takeback_anonymized_{batch_id}.zip", media_type="application/zip")

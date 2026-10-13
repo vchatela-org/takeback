@@ -1778,8 +1778,10 @@ def reciprocity(snapshot: Dict[str, Dict]) -> Optional[Dict[str, List[Dict]]]:
 
 def _company_key(name: str) -> str:
     # Members type their employer themselves: "Globex-Corp" and "Globex
-    # - Corp" are the same company.
-    return re.sub(r"\s*([-&/])\s*", r"\1", " ".join(name.split())).casefold()
+    # - Corp" are the same company. Whitespace is collapsed first, so a
+    # separator has at most one space on either side: " ?" is all it takes,
+    # and unlike "\s*" it cannot backtrack quadratically.
+    return re.sub(r" ?([-&/]) ?", r"\1", " ".join(name.split())).casefold()
 
 
 def network_companies(snapshot: Dict[str, Dict], limit: int = 15) -> Optional[Dict]:

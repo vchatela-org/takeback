@@ -1,7 +1,6 @@
 import json
 import logging
 import math
-import uuid
 from datetime import datetime
 from typing import List, Optional
 from urllib.parse import urlparse
@@ -12,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app import crud, dedup, processing, anonymize, limits, platforms, scheduler, stats
 from app.importers.meta_common import find_instagram_post_urls
-from app.database import get_db, uploads_dir, imports_dir, anonymized_dir
+from app.database import anonymized_artifact, batch_extract_dir, batch_uploads, get_db, new_batch_upload
 from app.models import ImportStatus
 from app.templating import templates
 
@@ -149,7 +148,7 @@ async def upload_import(
 
     upload_paths = []
     for file in files:
-        upload_path = uploads_dir() / f"{batch_id}-{uuid.uuid4().hex}.zip"
+        upload_path = new_batch_upload(batch_id)
         try:
             written = await limits.stream_upload(file, upload_path, file.filename)
             limits.check_batch_upload_size([*upload_paths, upload_path])
@@ -201,15 +200,15 @@ async def upload_one_file(batch_id: int, file: UploadFile = File(...), db: Sessi
     if not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Seules les archives .zip sont acceptées")
 
-    upload_path = uploads_dir() / f"{batch_id}-{uuid.uuid4().hex}.zip"
+    upload_path = new_batch_upload(batch.id)
     try:
         written = await limits.stream_upload(file, upload_path, file.filename)
         # The file just written is already on disk under the batch's prefix, so
         # the glob is the whole batch -- this file included.
-        limits.check_batch_upload_size(uploads_dir().glob(f"{batch_id}-*.zip"))
+        limits.check_batch_upload_size(batch_uploads(batch.id))
     except limits.UploadTooLarge as exc:
         raise HTTPException(status_code=413, detail=str(exc))
-    logger.info("Batch %s: saved upload %r -> %s (%d bytes on disk)", batch_id, file.filename, upload_path.name, written)
+    logger.info("Batch %s: saved upload %r -> %s (%d bytes on disk)", batch.id, file.filename, upload_path.name, written)
     return {"filename": file.filename, "bytes": written}
 
 
@@ -221,11 +220,11 @@ def finalize_import(batch_id: int, background_tasks: BackgroundTasks, db: Sessio
     if not batch:
         raise HTTPException(status_code=404, detail="Import introuvable")
 
-    upload_paths = sorted(uploads_dir().glob(f"{batch_id}-*.zip"))
+    upload_paths = batch_uploads(batch.id)
     if not upload_paths:
         raise HTTPException(status_code=400, detail="Aucun fichier reçu pour cet import")
 
-    logger.info("Batch %s: finalizing with %d file(s) on disk", batch_id, len(upload_paths))
+    logger.info("Batch %s: finalizing with %d file(s) on disk", batch.id, len(upload_paths))
     background_tasks.add_task(processing.process_import, batch_id, upload_paths)
     return {"status": "started", "batch_id": batch_id}
 
@@ -245,7 +244,7 @@ def batch_detail(batch_id: int, request: Request, db: Session = Depends(get_db))
             bucket["item_types"].append((item_type, count))
         batch_stats = crud.get_batch_stats(db, batch_id)
 
-    extract_dir = imports_dir() / str(batch_id)
+    extract_dir = batch_extract_dir(batch_id)
     has_extracted_files = extract_dir.exists() and any(extract_dir.iterdir())
 
     return templates.TemplateResponse(
@@ -268,7 +267,7 @@ def reanalyze(batch_id: int, background_tasks: BackgroundTasks, db: Session = De
     batch = crud.get_batch(db, batch_id)
     if not batch:
         raise HTTPException(status_code=404, detail="Import introuvable")
-    extract_dir = imports_dir() / str(batch_id)
+    extract_dir = batch_extract_dir(batch_id)
     if not extract_dir.exists() or not any(extract_dir.iterdir()):
         raise HTTPException(status_code=400, detail="Aucun fichier extrait à réanalyser pour cet import")
     # Flip the status now, not in the background task: the redirect below can
@@ -278,7 +277,7 @@ def reanalyze(batch_id: int, background_tasks: BackgroundTasks, db: Session = De
     batch.error_message = None
     db.commit()
     background_tasks.add_task(processing.reanalyze_import, batch_id)
-    return RedirectResponse(f"/imports/{batch_id}", status_code=303)
+    return RedirectResponse(f"/imports/{batch.id}", status_code=303)
 
 
 @router.get("/imports/{batch_id}/status", response_class=HTMLResponse)
@@ -315,11 +314,11 @@ def start_anonymize(batch_id: int, background_tasks: BackgroundTasks, db: Sessio
     batch = crud.get_batch(db, batch_id)
     if not batch:
         raise HTTPException(status_code=404, detail="Import introuvable")
-    extract_dir = imports_dir() / str(batch_id)
+    extract_dir = batch_extract_dir(batch_id)
     if not extract_dir.exists():
         raise HTTPException(status_code=400, detail="Fichiers de l'import introuvables")
     background_tasks.add_task(anonymize.run_anonymize_job, batch_id, extract_dir, batch.source)
-    return RedirectResponse(f"/imports/{batch_id}", status_code=303)
+    return RedirectResponse(f"/imports/{batch.id}", status_code=303)
 
 
 @router.get("/imports/{batch_id}/anonymize/status", response_class=HTMLResponse)
@@ -336,7 +335,7 @@ def anonymize_status_fragment(batch_id: int, request: Request):
 
 @router.get("/imports/{batch_id}/anonymize/download")
 def download_anonymized(batch_id: int):
-    zip_path = anonymized_dir() / f"{batch_id}.zip"
+    zip_path = anonymized_artifact(batch_id, ".zip")
     if not zip_path.exists():
         raise HTTPException(status_code=404, detail="Archive anonymisée introuvable")
     return FileResponse(zip_path, filename=f"takeback_anonymized_{batch_id}.zip", media_type="application/zip")

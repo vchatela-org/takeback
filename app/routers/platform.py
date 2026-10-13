@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from app import crud, platforms, stats
+from app import crud, importers, platforms, stats
 from app.database import get_db
 from app.importers.meta_common import find_instagram_post_urls
 from app.routers.web import parse_date
@@ -49,6 +49,14 @@ def _page(request: Request, db: Session, source: str, view: str, include_1970: b
         "item_types": item_types,
         "undated": {"count": crud.count_1970(db, source), "included": include_1970},
     }
+
+
+def _to_overview(source: str) -> RedirectResponse:
+    """Back to the platform's overview, for a page it holds no data for. Built
+    from the registered import module's key rather than the URL's segment:
+    _page() has already 404ed an unknown platform, so this can only ever point
+    inside the app."""
+    return RedirectResponse(f"/p/{importers.get(source).key}")
 
 
 def _period_context(date_from: Optional[str], date_to: Optional[str], years: List[int]) -> dict:
@@ -184,7 +192,7 @@ def activity(
 ):
     ctx = _page(request, db, source, "activity", include_1970)
     if ctx is None:
-        return RedirectResponse(f"/p/{source}")
+        return _to_overview(source)
     granularity = _granularity(granularity)
     group_by = group_by if group_by in ACTIVITY_GROUP_DIMENSIONS else "category"
 
@@ -236,12 +244,12 @@ def usage(
 ):
     ctx = _page(request, db, source, "usage", include_1970)
     if ctx is None:
-        return RedirectResponse(f"/p/{source}")
+        return _to_overview(source)
     granularity = _granularity(granularity)
     present = ctx["item_types"]
     families = stats.usage_families(present)
     if not families:
-        return RedirectResponse(f"/p/{source}")
+        return _to_overview(source)
     selected = next((f for f in families if f.key == family), families[0])
     period_from, period_to = parse_date(date_from), parse_date(date_to, end_of_day=True)
 
@@ -342,7 +350,7 @@ def purchases(
 ):
     ctx = _page(request, db, source, "purchases", include_1970)
     if ctx is None:
-        return RedirectResponse(f"/p/{source}")
+        return _to_overview(source)
     granularity = _granularity(granularity)
     group_by = _group_by(group_by, source)
 
@@ -483,7 +491,7 @@ def purchases_list(
 ):
     ctx = _page(request, db, source, "purchases", include_1970)
     if ctx is None:
-        return RedirectResponse(f"/p/{source}")
+        return _to_overview(source)
     group_by = _group_by(group_by, source)
     sort = sort if sort in ("amount", "date", "product", "group") else "date"
     direction = direction if direction in ("asc", "desc") else "desc"
@@ -545,7 +553,7 @@ def formulas(
 ):
     ctx = _page(request, db, source, "formulas", include_1970)
     if ctx is None:
-        return RedirectResponse(f"/p/{source}")
+        return _to_overview(source)
     granularity = _granularity(granularity)
 
     # Whole history once, like the purchases page: it ranks the formulas by
@@ -592,7 +600,7 @@ def dishes(
 ):
     ctx = _page(request, db, source, "dishes", include_1970)
     if ctx is None:
-        return RedirectResponse(f"/p/{source}")
+        return _to_overview(source)
     granularity = _granularity(granularity)
 
     all_rows = crud.get_titled_rows(db, source, stats.DISH_VIEW_TYPES, include_1970=include_1970)
@@ -645,7 +653,7 @@ def reading(
 ):
     ctx = _page(request, db, source, "reading", include_1970)
     if ctx is None:
-        return RedirectResponse(f"/p/{source}")
+        return _to_overview(source)
     granularity = _granularity(granularity)
 
     all_rows = crud.get_dashboard_rows(
@@ -732,7 +740,7 @@ def library(
     not -- "what did I read in 2025" is the reading tab's."""
     ctx = _page(request, db, source, "library")
     if ctx is None:
-        return RedirectResponse(f"/p/{source}")
+        return _to_overview(source)
     sort = sort if sort in LIBRARY_SORTS else "activity"
     direction = direction if direction in ("asc", "desc") else "desc"
     kind = kind if kind in stats.LIBRARY_KINDS else None
@@ -830,7 +838,7 @@ def _message_extras(messages: List) -> tuple:
 def conversations(source: str, request: Request, context: Optional[str] = None, db: Session = Depends(get_db)):
     ctx = _page(request, db, source, "conversations")
     if ctx is None:
-        return RedirectResponse(f"/p/{source}")
+        return _to_overview(source)
 
     messages: list = []
     has_more = False
@@ -884,7 +892,7 @@ def messaging(
 ):
     ctx = _page(request, db, source, "messaging", include_1970)
     if ctx is None:
-        return RedirectResponse(f"/p/{source}")
+        return _to_overview(source)
     granularity = _granularity(granularity)
     threads = threads if threads in stats.THREAD_KINDS else None
 
@@ -990,7 +998,7 @@ def network(
 ):
     ctx = _page(request, db, source, "network", include_1970)
     if ctx is None:
-        return RedirectResponse(f"/p/{source}")
+        return _to_overview(source)
     granularity = _granularity(granularity)
 
     rows, snapshot = _network_snapshot(db, source, include_1970)
@@ -1080,7 +1088,7 @@ def career(
 ):
     ctx = _page(request, db, source, "career", include_1970)
     if ctx is None:
-        return RedirectResponse(f"/p/{source}")
+        return _to_overview(source)
     granularity = _granularity(granularity, "year")
     period_from, period_to = parse_date(date_from), parse_date(date_to, end_of_day=True)
 
@@ -1121,7 +1129,7 @@ def posts(
 ):
     ctx = _page(request, db, source, "posts", include_1970)
     if ctx is None:
-        return RedirectResponse(f"/p/{source}")
+        return _to_overview(source)
     granularity = _granularity(granularity)
 
     post_media = crud.get_post_media(db, source)
