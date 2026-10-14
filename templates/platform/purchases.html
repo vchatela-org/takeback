@@ -163,7 +163,7 @@
       var range = data.ranges[index];
       if (series && series.returns) {
         return {
-          url: TB.url('/p/' + source + '/panel', { item_type: ['return', 'return_status'], date_from: range[0], date_to: range[1] }),
+          url: TB.url('/p/' + source + '/panel', { item_type: {{ return_item_types | tojson }}, date_from: range[0], date_to: range[1] }),
           title: 'Remboursements', subtitle: data.labels[index],
         };
       }
@@ -193,7 +193,7 @@
       var range = data.ranges[index];
       if (series && series.label === 'Retours') {
         return {
-          url: TB.url('/p/' + source + '/panel', { item_type: ['return', 'return_status'], date_from: range[0], date_to: range[1] }),
+          url: TB.url('/p/' + source + '/panel', { item_type: {{ return_item_types | tojson }}, date_from: range[0], date_to: range[1] }),
           title: 'Retours', subtitle: data.labels[index],
         };
       }

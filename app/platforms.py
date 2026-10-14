@@ -56,6 +56,11 @@ _PLATFORMS = {
         "Mon compte › Mes données personnelles › Demander mes données (RGPD)",
         "export.seazon",
     ),
+    "zalando": Platform(
+        "zalando", "Zalando", "bi-shop", "#ff6900",
+        "Mon compte › Mes données › Télécharger mes données",
+        "export.zalando",
+    ),
 }
 
 # Shown greyed out, as coming next, until an import module reads their export.

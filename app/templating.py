@@ -126,6 +126,12 @@ templates.env.globals.update(
     # The item type a platform's own order lines use, for the "what was
     # ordered" link a return/refund row carries.
     purchase_line_type=stats.purchase_line_type,
+    # Every return/refund item type, all platforms (see app/stats.py): the
+    # purchases page's "Retours" bars open a panel over exactly these. The list
+    # comes from stats rather than being spelled out in the template, where it
+    # was Amazon's two types only -- a page whose platform has its own return
+    # type then opened an empty panel.
+    return_item_types=stats.RETURN_ITEM_TYPES,
     # Translations: `_` is the message lookup, `locale` the language the page is
     # being rendered in (templates set <html lang> from it).
     _=i18n.translate,

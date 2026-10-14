@@ -61,6 +61,8 @@ _KIND_BY_PURCHASE = {
     # Grafana query on ShoppingStats can tell them from Amazon's lines --
     # `source` alone would do it, this keeps `kind` meaningful too.
     stats.SEAZON_ORDER_TYPE: "meal",
+    # Zalando's clothing orders (app/importers/zalando.py), same reasoning.
+    stats.ZALANDO_ORDER_TYPE: "fashion",
 }
 # Reading/listening item type -> (tracker, kind of media).
 _READING_TRACKER = {

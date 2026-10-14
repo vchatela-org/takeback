@@ -67,6 +67,12 @@ VOLATILE_FIELDS = {
     # LinkedIn recomputes its inferred scores every week.
     "credibility_score": ("Score", "Calculé le", "Historique"),
     "inference": ("Valeur", "Description"),
+    # Zalando: an order placed months ago turns "Fermé" into "Retour partiel"
+    # once something is sent back, and the returned line's own state with it.
+    # Only those two churn: the price, the size, the article reference and the
+    # seller are fixed when the order is placed, so they stay in the
+    # fingerprint -- two same-named lines differing by size must stay distinct.
+    "zalando_order": ("Statut", "État de l'article"),
 }
 # Item types dated by their latest occurrence rather than their creation (a
 # LinkedIn Learning course is dated by its last viewing): that date moves
