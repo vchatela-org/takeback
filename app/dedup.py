@@ -63,7 +63,13 @@ VOLATILE_FIELDS = {
     "event": ("Statut",),
     "learning_course": ("Terminé le", "Enregistré", "Notes"),
     "message": ("Dossier",),
-    "post": ("Visibilité",),
+    # A Reddit post or comment can still be awarded after the export.
+    "post": ("Visibilité", "Récompenses"),
+    "comment": ("Récompenses",),
+    # Reddit: a vote changed or withdrawn, an announcement read since.
+    "post_vote": ("Vote",),
+    "comment_vote": ("Vote",),
+    "announcement": ("Lue le",),
     # LinkedIn recomputes its inferred scores every week.
     "credibility_score": ("Score", "Calculé le", "Historique"),
     "inference": ("Valeur", "Description"),

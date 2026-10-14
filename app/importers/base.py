@@ -49,6 +49,11 @@ class BaseImporter(ABC):
     # item_type -> the name the UI shows for it (French); a type without
     # one is shown humanized ("app_install" -> "App install").
     type_labels: Dict[str, str] = {}
+    # For an export that names its account outright: the item type whose
+    # `title` is the owner, spelled the way the platform's messages spell an
+    # author. Without one the owner is guessed from who wrote in the most
+    # conversations (crud.get_me_candidate), which needs them to have written.
+    owner_item_type: Optional[str] = None
 
     @abstractmethod
     def detect(self, root: Path) -> bool:

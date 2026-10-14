@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
+from app import importers
 from app.models import ImportBatch, Item, ImportStatus, MediaFile, SyncRun
 from app.stats import NETWORK_CATEGORIES
 
@@ -558,7 +559,21 @@ def get_threads(db: Session, source: str) -> List[dict]:
 def get_me_candidate(db: Session, source: str) -> Optional[str]:
     """Best-effort "who is the account owner": the sender appearing across
     the most distinct threads, computed as one aggregate query instead of
-    walking every message of every thread in Python."""
+    walking every message of every thread in Python -- unless the platform's
+    export names its owner (BaseImporter.owner_item_type), which is taken
+    over the guess: in an inbox of messages only received (Reddit's, from
+    Reddit and bots) the guess can only land on one of their senders."""
+    importer = importers.get(source)
+    owner_type = importer.owner_item_type if importer else None
+    if owner_type:
+        declared = (
+            _scope(db.query(Item.title), source=source)
+            .filter(Item.item_type == owner_type, Item.title.isnot(None))
+            .order_by(Item.batch_id.desc(), Item.id.desc())
+            .first()
+        )
+        if declared:
+            return declared[0]
     row = (
         _scope(db.query(Item.author, func.count(func.distinct(Item.context)).label("thread_count")), source=source)
         .filter(Item.item_type == "message", Item.author.isnot(None))

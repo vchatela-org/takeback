@@ -358,8 +358,9 @@ def _anonymize_csv_row(anonymizer: Anonymizer, row: list, columns: list) -> list
         # start_timestamp/end_timestamp, missing a "date" substring) and
         # "Start Time"/"Device Record Time"-style columns seen across several
         # real Amazon files. LinkedIn names its date columns "Connected On",
-        # "Sent At"... and Zalando's are French ("Compte créé le").
-        if "date" in col or "time" in col or col.endswith((" on", " at", " le")):
+        # "Sent At"... Zalando's are French ("Compte créé le"), and Reddit's
+        # snake_case ("sent_at", "read_at").
+        if "date" in col or "time" in col or col.endswith((" on", " at", "_at", " le")):
             new_row.append(str(anonymizer._jitter_timestamp(cell)))
         else:
             new_row.append(anonymizer._pseudo_amount(cell))

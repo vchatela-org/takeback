@@ -61,6 +61,9 @@ _PLATFORMS = {
         "Mon compte › Mes données › Télécharger mes données",
         "export.zalando",
     ),
+    # Reddit's request form has an address of its own: like Google's, the hint
+    # is that address, the same in every language.
+    "reddit": Platform("reddit", "Reddit", "bi-reddit", "#ff4500", "reddit.com/settings/data-request"),
 }
 
 # Shown greyed out, as coming next, until an import module reads their export.
