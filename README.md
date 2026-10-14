@@ -1,8 +1,8 @@
 # Takeback – personal data archive
 
 Import, parse and browse the "download your data" exports the platforms give
-you (Facebook, Instagram, Google Takeout, Amazon, LinkedIn, Seazon, Zalando, and
-more to come) — a single self-hosted app.
+you (Facebook, Instagram, Google Takeout, Amazon, LinkedIn, Seazon, Zalando,
+Reddit, and more to come) — a single self-hosted app.
 
 ## Scope
 
@@ -20,7 +20,7 @@ Where a new source goes:
 
 | The source is... | It goes... | Examples |
 |---|---|---|
-| a platform's whole "your data" archive: many categories, text, made to be browsed | into Takeback, as an import module | Meta, Google Takeout, Amazon (Kindle and Audible included), LinkedIn, Seazon, Zalando, the Spotify export |
+| a platform's whole "your data" archive: many categories, text, made to be browsed | into Takeback, as an import module | Meta, Google Takeout, Amazon (Kindle and Audible included), LinkedIn, Seazon, Zalando, Reddit, the Spotify export |
 | measurements to plot or cross-reference, from the source's API and/or its export file | into a dedicated sync tool, which writes to InfluxDB | Renpho, Whoop, MyTherapy, MyFitnessPal, Audiobookshelf (see [Tributary](https://github.com/vchatela-org/tributary)) |
 | a tool that already has its own storage and interface | nowhere: it stays as it is | garmin-grafana, Tautulli, Your Spotify |
 
@@ -92,8 +92,8 @@ The SQLite database and the extracted exports are persisted in `./data`
 ## Usage
 
 1. On the **Imports** page, drop the `.zip` archive downloaded from Amazon,
-   Facebook, Instagram (JSON format), Google Takeout, LinkedIn, Seazon or
-   Zalando. For an export split across several zips (common for Facebook on
+   Facebook, Instagram (JSON format), Google Takeout, LinkedIn, Seazon, Zalando
+   or Reddit. For an export split across several zips (common for Facebook on
    large accounts), select them all at once: each file is sent in its own
    request (rather than one multi-gigabyte bundle) via `/imports/start` →
    `/imports/{id}/upload-file` × N → `/imports/{id}/finalize`, so nothing
@@ -119,7 +119,8 @@ The per-platform views therefore count each item once (`app/dedup.py`):
   changing;
 - fields that legitimately change from one export to the next for the same item
   (an order's status going "Shipped" → "Closed", a shipping date, a pinned Keep
-  note, a LinkedIn contact's current company, an accepted endorsement…) are
+  note, a LinkedIn contact's current company, an accepted endorsement, a Reddit
+  vote withdrawn…) are
   excluded from the fingerprint (`dedup.VOLATILE_FIELDS`), as is the date of an
   item dated by its last occurrence (a LinkedIn Learning course, dated by its
   last view: `dedup.VOLATILE_TIMESTAMP_TYPES`); that list is indexed by **source
