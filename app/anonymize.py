@@ -24,6 +24,7 @@ import csv
 import io
 import json
 import random
+import re
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -32,7 +33,7 @@ from typing import Any, Optional
 from faker import Faker
 
 from app.database import anonymized_artifact
-from app.importers import linkedin
+from app.importers import linkedin, zalando
 
 # Field names (lowercased) whose string value is a person's name-like identity.
 NAME_KEYS = {
@@ -56,6 +57,17 @@ TEXT_DATE_FORMATS = (
     "%d %b %Y", "%b %Y", "%m/%d/%y, %I:%M %p", "%Y/%m/%d %H:%M:%S UTC", "%Y-%m-%d %H:%M UTC",
     "%Y-%m-%d %H:%M:%S UTC", "%a %b %d %H:%M:%S UTC %Y", "%b %d, %Y %I:%M %p", "%m/%d/%Y",
 )
+# A French long date ("11 octobre 2026", Zalando's shape) cannot go in the list
+# above: strptime's %B is C-locale, i.e. English month names. It gets its own
+# parser instead, and is written back in the same shape so the anonymized copy
+# still reads as French. app/importers/zalando.py holds the same twelve months
+# as a lookup table; this one is deliberately its own, because it needs the
+# names in calendar order to write a shifted date back and, as
+# amazon._parse_epoch_any_unit does for the same reason, a few lines duplicated
+# beat a dependency on a platform module for a calendar.
+_FR_MONTHS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
+              "septembre", "octobre", "novembre", "décembre")
+_FR_LONG_DATE_RE = re.compile(r"^(\d{1,2}) ([a-zà-ÿ]+) (\d{4})$", re.IGNORECASE)
 # Generous upper bound (year ~2255) used only to detect the UNIT of a numeric
 # timestamp: a real epoch value in seconds never exceeds this, so anything
 # bigger is milliseconds/microseconds/nanoseconds and gets scaled down.
@@ -260,11 +272,24 @@ class Anonymizer:
         return self._pseudo_text(value) if isinstance(value, str) else value
 
     def _shift_text_date(self, value: str) -> Optional[str]:
+        text = value.strip()
+        # The English formats go FIRST: "12 Mar 2024" has the very same shape as
+        # "12 mars 2024" ("%d %b %Y" is a C-locale abbreviation, French month
+        # names are not), so a French parser claiming it blindly would turn a
+        # valid LinkedIn date into a sentence.
         for fmt in TEXT_DATE_FORMATS:
             try:
-                return (datetime.strptime(value.strip(), fmt) + self._day_offset).strftime(fmt)
+                return (datetime.strptime(text, fmt) + self._day_offset).strftime(fmt)
             except ValueError:
                 continue
+        match = _FR_LONG_DATE_RE.match(text)
+        if match and match.group(2).lower() in _FR_MONTHS:
+            try:
+                month = _FR_MONTHS.index(match.group(2).lower()) + 1
+                shifted = datetime(int(match.group(3)), month, int(match.group(1))) + self._day_offset
+            except ValueError:
+                return None
+            return f"{shifted.day} {_FR_MONTHS[shifted.month - 1]} {shifted.year}"
         return None
 
     def walk(self, key: str, value: Any) -> Any:
@@ -312,31 +337,68 @@ class Anonymizer:
         return value  # numbers/bools/null: structural (counts, flags, schema-level values)
 
 
-def _anonymize_csv(anonymizer: Anonymizer, text: str, escapechar: Optional[str] = None) -> str:
+def _anonymize_csv_row(anonymizer: Anonymizer, row: list, columns: list) -> list:
+    """One CSV row, cell by cell: a date/time-like column (by name) is jittered
+    the same way JSON timestamps are (real per-row dates, chronological order
+    preserved), and any other cell that is a bare number gets a random
+    plausible number of similar shape via _pseudo_amount() (which itself falls
+    back to full text replacement for anything that doesn't actually parse as
+    one). Detecting numeric CELLS rather than matching amount/quantity/
+    duration-ish column NAMES against a keyword list kept needing a new keyword
+    every time another real export turned up one more numeric column it didn't
+    cover (Amazon alone: Total Owed, Quantity, Duration Ms, Book Length
+    Milliseconds, total_reading_millis...)."""
+    new_row = []
+    for i, cell in enumerate(row):
+        if not cell:
+            new_row.append(cell)
+            continue
+        col = columns[i] if i < len(columns) else ""
+        # "time" alone also catches "timestamp" (Kindle's
+        # start_timestamp/end_timestamp, missing a "date" substring) and
+        # "Start Time"/"Device Record Time"-style columns seen across several
+        # real Amazon files. LinkedIn names its date columns "Connected On",
+        # "Sent At"... and Zalando's are French ("Compte créé le").
+        if "date" in col or "time" in col or col.endswith((" on", " at", " le")):
+            new_row.append(str(anonymizer._jitter_timestamp(cell)))
+        else:
+            new_row.append(anonymizer._pseudo_amount(cell))
+    return new_row
+
+
+def _anonymize_csv(anonymizer: Anonymizer, text: str, escapechar: Optional[str] = None,
+                   header: Optional[tuple] = None) -> str:
     """Keeps the header row (column names are structural) verbatim, then
-    dispatches each data cell rather than treating every cell identically:
-    a date/time-like column (by name) is jittered the same way JSON
-    timestamps are (real per-row dates, chronological order preserved),
-    and any other cell that's a bare number gets a random plausible number
-    of similar shape via _pseudo_amount() (which itself falls back to full
-    text replacement for anything that doesn't actually parse as one) --
-    detecting numeric CELLS rather than matching amount/quantity/duration-
-    ish column NAMES against a keyword list, which kept needing a new
-    keyword added every time another real export turned up one more
-    numeric column it didn't cover (Amazon alone: Total Owed, Quantity,
-    Duration Ms, Book Length Milliseconds, total_reading_millis...).
-    Without any of this, a CSV export would have its Order Date and Total
-    Owed columns turned into nonsense sentences right alongside the
-    genuinely sensitive Product Name column, leaving nothing usable to
-    verify date/amount parsing logic against.
+    anonymizes each data cell (see _anonymize_csv_row). Without that dispatch a
+    CSV export would have its Order Date and Total Owed columns turned into
+    nonsense sentences right alongside the genuinely sensitive Product Name
+    column, leaving nothing usable to verify date/amount parsing logic against.
+    (A cell written with its currency inside it -- Zalando's "35,00 €" -- still
+    reaches _pseudo_amount as something it cannot parse as a number, and comes
+    out as a sentence; the date columns and every bare number are the ones this
+    keeps readable.)
     `escapechar`: how the platform's importer reads this file (LinkedIn's
-    Comments.csv, linkedin.csv_escapechar); written back standard."""
+    Comments.csv, linkedin.csv_escapechar); written back standard.
+    `header`: the column names to use for a file that ships WITHOUT a header row
+    (Zalando's orders-products.csv, zalando.csv_header_for). Such a file has no
+    header to keep, and its FIRST line is real data -- reading it as one would
+    write a real order id, article number and product name out verbatim."""
     reader = csv.reader(io.StringIO(text), escapechar=escapechar)
     rows = list(reader)
     if not rows:
         return text
     out = io.StringIO()
     writer = csv.writer(out)
+
+    if header is not None:
+        columns = [str(name).strip().lower() for name in header]
+        for row in rows:
+            if not any(cell.strip() for cell in row):
+                writer.writerow(row)
+                continue
+            writer.writerow(_anonymize_csv_row(anonymizer, row, columns))
+        return out.getvalue()
+
     # LinkedIn's Connections.csv opens with "Notes:", a note and a blank
     # line before its header row: kept in that shape (the note itself
     # replaced, like any text), so the header stays a header.
@@ -351,26 +413,11 @@ def _anonymize_csv(anonymizer: Anonymizer, text: str, escapechar: Optional[str] 
             start = blank + 1
     if start >= len(rows):
         return out.getvalue()
-    header = rows[start]
-    header_lower = [h.strip().lower() for h in header]
-    writer.writerow(header)
+    file_header = rows[start]
+    columns = [h.strip().lower() for h in file_header]
+    writer.writerow(file_header)
     for row in rows[start + 1:]:
-        new_row = []
-        for i, cell in enumerate(row):
-            if not cell:
-                new_row.append(cell)
-                continue
-            col = header_lower[i] if i < len(header_lower) else ""
-            # "time" alone also catches "timestamp" (Kindle's
-            # start_timestamp/end_timestamp, missing a "date" substring)
-            # and "Start Time"/"Device Record Time"-style columns seen
-            # across several real Amazon files.
-            # LinkedIn names its date columns "Connected On", "Sent At"...
-            if "date" in col or "time" in col or col.endswith((" on", " at")):
-                new_row.append(str(anonymizer._jitter_timestamp(cell)))
-            else:
-                new_row.append(anonymizer._pseudo_amount(cell))
-        writer.writerow(new_row)
+        writer.writerow(_anonymize_csv_row(anonymizer, row, columns))
     return out.getvalue()
 
 
@@ -419,7 +466,12 @@ def _anonymize_one_file(zf: zipfile.ZipFile, anonymizer: Anonymizer, paths: Path
     if suffix == ".csv":
         try:
             escapechar = linkedin.csv_escapechar(path) if source_key == "linkedin" else None
-            zf.writestr(new_rel, _anonymize_csv(anonymizer, path.read_text(encoding="utf-8", errors="replace"), escapechar))
+            # Zalando's orders-products.csv has no header row: its first line is
+            # an order line, so the column names have to come from the importer.
+            header = zalando.csv_header_for(path) if source_key == "zalando" else None
+            zf.writestr(new_rel, _anonymize_csv(
+                anonymizer, path.read_text(encoding="utf-8", errors="replace"), escapechar, header,
+            ))
             return
         except Exception:
             pass

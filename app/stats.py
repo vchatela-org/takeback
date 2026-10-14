@@ -56,8 +56,15 @@ SEAZON_ORDER_TYPE = "seazon_order"
 # page subtracts it from the spend, so what it calls "net" is the figure
 # Seazon's own profile states.
 SEAZON_REFUND_TYPE = "seazon_refund"
-PURCHASE_LINE_ITEM_TYPES = ["order_item", "digital_order", "audible_order", SEAZON_ORDER_TYPE]
-RETURN_ITEM_TYPES = ["return", "return_status", SEAZON_REFUND_TYPE]
+# A Zalando order line, its own type for the same reason (no department, no
+# ASIN, no product condition -- a size, an article reference and a seller
+# instead; see app/importers/zalando.py). Its purchase page groups by the shop
+# the order was placed on, under the wording below.
+ZALANDO_ORDER_TYPE = "zalando_order"
+# What came back on one of those lines, its own return type too.
+ZALANDO_RETURN_TYPE = "zalando_return"
+PURCHASE_LINE_ITEM_TYPES = ["order_item", "digital_order", "audible_order", SEAZON_ORDER_TYPE, ZALANDO_ORDER_TYPE]
+RETURN_ITEM_TYPES = ["return", "return_status", SEAZON_REFUND_TYPE, ZALANDO_RETURN_TYPE]
 PURCHASE_ITEM_TYPES = PURCHASE_LINE_ITEM_TYPES + RETURN_ITEM_TYPES
 # What gates Seazon's own two tabs: a box (the formula it was paid as) and
 # the dishes that went in it. Amazon holds neither type.
@@ -668,8 +675,12 @@ _PURCHASE_TYPES = {
     "digital_order": "Commandes numériques",
     "audible_order": "Commandes numériques",
     SEAZON_ORDER_TYPE: "Commandes de repas",
+    ZALANDO_ORDER_TYPE: "Commandes",
 }
-_RETURN_AMOUNT_FIELD = {"return": "Montant remboursé", "return_status": "Montant", SEAZON_REFUND_TYPE: "Montant remboursé"}
+_RETURN_AMOUNT_FIELD = {
+    "return": "Montant remboursé", "return_status": "Montant", SEAZON_REFUND_TYPE: "Montant remboursé",
+    ZALANDO_RETURN_TYPE: "Montant remboursé",
+}
 
 # Only "order_item" (retail) carries a real product department (Order
 # History's "Department" column, stored under fields["Département"] by the
@@ -684,6 +695,9 @@ _DIGITAL_CATEGORY_LABEL = "Numérique"
 # A Seazon order has no department either: its importer labels what the order
 # is ("Repas") under its own field name.
 _SEAZON_CATEGORY_FIELD = "Catégorie"
+# A Zalando line has no department either: the shop the order was placed on is
+# what its importer labels under this field name.
+_ZALANDO_CATEGORY_FIELD = "Boutique"
 
 # Dimensions purchases can be split by -- UI key -> the label the purchase
 # list and the charts show for it. "none" and "category" are handled
@@ -737,11 +751,17 @@ _PURCHASE_EXTRA_DIMENSIONS_BY_SOURCE = {
 # source absent from these tables gets the full Amazon-shaped set, unchanged.
 _PURCHASE_DIMENSIONS_BY_SOURCE = {
     "seazon": ("formula", "none", "shipping_address", "payment_method", "status"),
+    # A Zalando line carries the shop the order was placed on ("Zalando" /
+    # "Zalando Privé", read as its category), how it was paid, its status and
+    # the two addresses the order went to -- on the real export the billing one
+    # is not always the delivery one. It has no product condition, so that
+    # single Amazon dimension is the one left out.
+    "zalando": ("category", "none", "shipping_address", "billing_address", "payment_method", "status"),
 }
-_PURCHASE_CATEGORY_LABELS_BY_SOURCE = {"seazon": "Catégorie"}
+_PURCHASE_CATEGORY_LABELS_BY_SOURCE = {"seazon": "Catégorie", "zalando": "Boutique"}
 # The item type a platform's own order lines use, for the one link that has
 # to name it: a return's "what was ordered" column (templates/browse.html).
-_PURCHASE_LINE_TYPE_BY_SOURCE = {"seazon": SEAZON_ORDER_TYPE}
+_PURCHASE_LINE_TYPE_BY_SOURCE = {"seazon": SEAZON_ORDER_TYPE, "zalando": ZALANDO_ORDER_TYPE}
 
 _NO_GROUPING_LABEL = "Total"
 _UNSET_LABEL = "Non renseigné"
@@ -819,6 +839,8 @@ def purchase_category(item_type: str, fields: Dict) -> str:
         return fields.get("Département") or "Sans département"
     if item_type == SEAZON_ORDER_TYPE:
         return fields.get(_SEAZON_CATEGORY_FIELD) or "Sans catégorie"
+    if item_type == ZALANDO_ORDER_TYPE:
+        return fields.get(_ZALANDO_CATEGORY_FIELD) or "Sans boutique"
     return _DIGITAL_CATEGORY_LABEL
 
 

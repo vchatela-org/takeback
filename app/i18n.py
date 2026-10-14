@@ -92,6 +92,7 @@ CATALOGS: Dict[str, Dict[str, str]] = {
         "export.instagram": "Espace comptes › Télécharger vos informations (format JSON)",
         "export.linkedin": "Préférences › Confidentialité des données › Obtenir une copie de vos données",
         "export.seazon": "Mon compte › Mes données personnelles › Demander mes données (RGPD)",
+        "export.zalando": "Mon compte › Mes données › Télécharger mes données",
     },
     "en": {
         "a11y.close": "Close",
@@ -128,6 +129,7 @@ CATALOGS: Dict[str, Dict[str, str]] = {
         "export.instagram": "Accounts Center › Download your information (JSON format)",
         "export.linkedin": "Settings › Data privacy › Get a copy of your data",
         "export.seazon": "My account › My personal data › Request my data (GDPR)",
+        "export.zalando": "My account › My data › Download my data",
     },
 }
 
@@ -161,6 +163,12 @@ TYPE_LABELS: Dict[str, Dict[str, str]] = {
         "order_cancelled": "Cancelled slot",
         "seazon_refund": "Refund",
         "meal": "Dish",
+        # Zalando.
+        "zalando_order": "Ordered item",
+        "zalando_return": "Returned item",
+        "wishlist_item": "Wishlist item",
+        "newsletter_preference": "Newsletter subscription",
+        "size_fit": "Body measurements",
         # LinkedIn.
         "position": "Position",
         "education": "Education",

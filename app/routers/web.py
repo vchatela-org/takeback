@@ -560,6 +560,9 @@ _ORDER_CONTEXT_TYPES = (
     # Seazon: its order, a refund, a meal, a cancelled slot and a delivery
     # rating all carry the order ID they belong to.
     "seazon_order", "seazon_refund", "meal", "order_cancelled", "opinion",
+    # Zalando: an order line and what came back on it both carry the order
+    # number of `orders-master.csv`.
+    "zalando_order", "zalando_return",
 )
 
 
