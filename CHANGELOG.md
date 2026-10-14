@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/vchatela-org/takeback/compare/v1.1.0...v1.2.0) (2026-10-14)
+
+
+### Features
+
+* import Reddit's data export ([#19](https://github.com/vchatela-org/takeback/issues/19)) ([ab16c55](https://github.com/vchatela-org/takeback/commit/ab16c55636e286b7a915e44496767275192100bb))
+
 ## [1.1.0](https://github.com/vchatela-org/takeback/compare/v1.0.1...v1.1.0) (2026-10-14)
 
 
