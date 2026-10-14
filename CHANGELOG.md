@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/vchatela-org/takeback/compare/v1.0.1...v1.1.0) (2026-10-14)
+
+
+### Features
+
+* import Zalando's data export ([#14](https://github.com/vchatela-org/takeback/issues/14)) ([b6b9f14](https://github.com/vchatela-org/takeback/commit/b6b9f14b2b1436bd8f862e17f37e8fb23d677660))
+
 ## [1.0.1](https://github.com/vchatela-org/takeback/compare/v1.0.0...v1.0.1) (2026-10-13)
 
 
