@@ -12,7 +12,7 @@ from typing import Iterable, List
 from app import importers
 from app.stats import (
     CAREER_ITEM_TYPES, DISH_VIEW_TYPES, FORMULA_VIEW_TYPES, LIBRARY_VIEW_TYPES, NETWORK_ITEM_TYPES,
-    PURCHASE_LINE_ITEM_TYPES, READING_ITEM_TYPES, USAGE_VIEW_TYPES,
+    PURCHASE_LINE_ITEM_TYPES, READING_ITEM_TYPES, USAGE_VIEW_TYPES, VIDEO_ITEM_TYPES,
 )
 
 
@@ -110,6 +110,7 @@ PURCHASES = View("purchases", "Achats", "bi-bag", "/purchases", "view.purchases"
 FORMULAS = View("formulas", "Formules", "bi-box2", "/formulas", "view.formulas")
 DISHES = View("dishes", "Plats", "bi-egg-fried", "/dishes", "view.dishes")
 READING = View("reading", "Lecture & écoute", "bi-book", "/reading", "view.reading")
+VIDEO = View("video", "Vidéo", "bi-play-btn", "/video", "view.video")
 LIBRARY = View("library", "Bibliothèque", "bi-bookshelf", "/library", "view.library")
 USAGE = View("usage", "Usages", "bi-compass", "/usage", "view.usage")
 ACTIVITY = View("activity", "Activité", "bi-activity", "/activity", "view.activity")
@@ -134,6 +135,8 @@ def available_views(item_types: Iterable[str]) -> List[View]:
         views.append(DISHES)
     if types & set(READING_ITEM_TYPES):
         views.append(READING)
+    if types & set(VIDEO_ITEM_TYPES):
+        views.append(VIDEO)
     if types & set(LIBRARY_VIEW_TYPES):
         views.append(LIBRARY)
     if types & set(USAGE_VIEW_TYPES):
