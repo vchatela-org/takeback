@@ -138,6 +138,11 @@ class AmazonImporter(BaseImporter):
         "kindle_book": "Livre Kindle",
         "kindle_document": "Document personnel",
         "kindle_badge": "Badge de lecture",
+        "audible_credit": "Crédit Audible",
+        "prime_video_view": "Visionnage Prime Video",
+        "gift_card": "Carte cadeau",
+        "saved_address": "Adresse",
+        "delivery_preference": "Préférence de livraison",
     }
 
     # Populated by parse() before returns are normalized; kept as a class-level
@@ -170,8 +175,10 @@ class AmazonImporter(BaseImporter):
         yield from self._parse_device_usage(root, "Your Fire TV Apps & Usage/Total Usage*.csv", "Fire TV")
         yield from self._parse_device_usage(root, "Your Fire Tablet Apps & Usage/Total Usage.csv", "Fire Tablet")
         yield from self._parse_app_engagement(root)
+        yield from self._parse_tablet_app_usage(root)
         yield from self._parse_audible_listening(root)
         yield from self._parse_audible_purchases(root)
+        yield from self._parse_audible_credits(root)
         yield from self._parse_alexa_utterances(root, "questionUnderstandings*.csv", "voice_command", "Alexa")
         yield from self._parse_alexa_utterances(root, "questionAnswering*.csv", "voice_question", "Alexa")
         yield from self._parse_kindle_reading_session(root)
@@ -180,6 +187,10 @@ class AmazonImporter(BaseImporter):
         yield from self._parse_kindle_library(root)
         yield from self._parse_kindle_documents(root)
         yield from self._parse_kindle_badges(root)
+        yield from self._parse_prime_video_views(root)
+        yield from self._parse_gift_cards(root)
+        yield from self._parse_saved_addresses(root)
+        yield from self._parse_address_preferences(root)
 
     # -- Shared CSV-category runner ------------------------------------------
     # Every category below is "glob a filename pattern, read each CSV row,
@@ -633,7 +644,22 @@ class AmazonImporter(BaseImporter):
             root, "Your Fire TV Apps & Usage/App Engagement*.csv", self._normalize_app_engagement
         )
 
-    def _normalize_app_engagement(self, row: Dict[str, str]) -> Optional[NormalizedItem]:
+    # -- Per-app usage (Fire Tablet) ------------------------------------------
+    # "Your Fire Tablet Apps & Usage/App Usage.csv" -- confirmed real header:
+    # Amazon Marketplace, App Package Name, App Profile Type, App Version
+    # Code/Name, Country of Residence, Device Profile Type, Device Record
+    # Time, Device Serial Number, Device Type, Duration Milliseconds, Launch
+    # Count, Metric Level, Metric Source, Product Mode, Reason Code, Software
+    # Version, Start Time. Same columns as the Fire TV engagement file, but
+    # the tablet's name is "App Usage", not "Total Usage" like its sessions.
+
+    def _parse_tablet_app_usage(self, root: Path) -> Iterator[NormalizedItem]:
+        yield from self._parse_csv_category(
+            root, "Your Fire Tablet Apps & Usage/App Usage*.csv",
+            lambda row: self._normalize_app_engagement(row, "Fire Tablet"),
+        )
+
+    def _normalize_app_engagement(self, row: Dict[str, str], device_label: str = "Fire TV") -> Optional[NormalizedItem]:
         app_name = _first_present(row, "App Package Name")
         start = _parse_amazon_date(_first_present(row, "Start Time", "Device Record Time"))
         if not app_name:
@@ -650,7 +676,7 @@ class AmazonImporter(BaseImporter):
 
         return NormalizedItem(
             item_type="app_engagement",
-            category="Fire TV",
+            category=device_label,
             timestamp=start,
             title=None,
             content=app_name,
@@ -749,6 +775,51 @@ class AmazonImporter(BaseImporter):
             author=None,
             context=order_id,
             fields=fields or None,
+            media=[],
+            raw=row,
+        )
+
+    # -- Audible credits -------------------------------------------------------
+    # "Your Audible Account & Membership/Credits History.csv" -- confirmed
+    # real header: Consumed Credit, Consumed Credit Revenue, Consumed Date,
+    # Consumed Order, Consumed Status, Credit Reason, Credit Status, Currency
+    # Code, Expire Date, Issue Date, Original Credit, Original Credit Revenue,
+    # Plan, Remaining Credit, Remaining Credit Revenue. One row per monthly
+    # credit. "Membership History.csv" is not read: it logs marketing campaign
+    # events rather than the member's own history.
+
+    def _parse_audible_credits(self, root: Path) -> Iterator[NormalizedItem]:
+        yield from self._parse_csv_category(
+            root, "Your Audible Account & Membership/Credits History*.csv", self._normalize_audible_credit
+        )
+
+    def _normalize_audible_credit(self, row: Dict[str, str]) -> Optional[NormalizedItem]:
+        credit = _parse_amount(_first_present(row, "Consumed Credit", "Original Credit"))
+        if credit is None:
+            return None
+        currency = _first_present(row, "Currency Code") or ""
+        revenue = _parse_amount(_first_present(row, "Consumed Credit Revenue", "Original Credit Revenue"))
+        when = _parse_amazon_date(_first_present(row, "Consumed Date", "Issue Date"))
+        expires = _parse_amazon_date(_first_present(row, "Expire Date"))
+        status = _first_present(row, "Consumed Status", "Credit Status")
+
+        fields: Dict[str, Any] = {"Crédits": f"{credit:.2f}"}
+        if revenue is not None:
+            fields["Valeur"] = f"{revenue:.2f} {currency}".strip()
+        if status:
+            fields["Statut"] = status
+        if expires:
+            fields["Expire le"] = expires.strftime("%d/%m/%Y")
+
+        return NormalizedItem(
+            item_type="audible_credit",
+            category="Audible",
+            timestamp=when,
+            title=None,
+            content=_first_present(row, "Plan", "Credit Reason") or "Crédit Audible",
+            author=None,
+            context=_first_present(row, "Consumed Order"),
+            fields=fields,
             media=[],
             raw=row,
         )
@@ -1161,6 +1232,167 @@ class AmazonImporter(BaseImporter):
             author=None,
             context=challenge,
             fields=fields or None,
+            media=[],
+            raw=row,
+        )
+
+    # -- Prime Video viewing history -------------------------------------------
+    # "Your Prime Video Viewing Activity/Viewing History.csv" -- confirmed real
+    # header: Title, Playback Start Datetime (UTC), Seconds Viewed, Stream Type,
+    # Amazon Device Model Name, Device Model, Is Deleted, ... 924 real rows.
+    # Unlike the other files, text values come wrapped in literal quotes
+    # ("Title", "No"), so they are unwrapped before use. A row flagged
+    # "Is Deleted" is left out: the viewer deleted it from their history.
+
+    def _parse_prime_video_views(self, root: Path) -> Iterator[NormalizedItem]:
+        yield from self._parse_csv_category(
+            root, "Your Prime Video Viewing Activity/Viewing History*.csv", self._normalize_prime_video_view
+        )
+
+    def _normalize_prime_video_view(self, row: Dict[str, str]) -> Optional[NormalizedItem]:
+        clean = {key: value.strip().strip('"') if value else value for key, value in row.items() if key}
+        title = _first_present(clean, "Title")
+        if not title or (_first_present(clean, "Is Deleted") or "").lower() == "yes":
+            return None
+
+        start = _parse_amazon_date(_first_present(clean, "Playback Start Datetime (UTC)"))
+        viewed = _parse_amount(_first_present(clean, "Seconds Viewed"))
+        device = _first_present(clean, "Amazon Device Model Name", "Device Model")
+
+        fields: Dict[str, Any] = {}
+        if viewed is not None:
+            fields["Durée vue"] = f"{viewed / 60:.0f} min"
+        if device:
+            fields["Appareil"] = device
+
+        return NormalizedItem(
+            item_type="prime_video_view",
+            category="Prime Video",
+            timestamp=start,
+            title=None,
+            content=title,
+            author=None,
+            context=None,
+            fields=fields or None,
+            media=[],
+            raw=row,
+        )
+
+    # -- Gift cards -------------------------------------------------------------
+    # "Your Gift Cards & Balances/Gift Cards.csv" -- confirmed real header:
+    # Currency Code, Delivery Type, Expiration Date, External Transaction ID,
+    # Issuance Date, Locked or Suspended, Marketplace, Message, Original Gift
+    # Card Balance, Purchaser Name, Recipient Email/Name/Phone, Remaining Gift
+    # Card Balance, Serial Number, Status. Purchaser and recipient identities
+    # are left out: they name other people. "Gift Card Balance.csv" (one
+    # current balance per marketplace) is a snapshot, not a history, so it is
+    # not read.
+
+    def _parse_gift_cards(self, root: Path) -> Iterator[NormalizedItem]:
+        yield from self._parse_csv_category(root, "Your Gift Cards & Balances/Gift Cards*.csv", self._normalize_gift_card)
+
+    def _normalize_gift_card(self, row: Dict[str, str]) -> Optional[NormalizedItem]:
+        original = _parse_amount(_first_present(row, "Original Gift Card Balance"))
+        if original is None:
+            return None
+        currency = _first_present(row, "Currency Code") or ""
+        remaining = _parse_amount(_first_present(row, "Remaining Gift Card Balance"))
+        expires = _parse_amazon_date(_first_present(row, "Expiration Date"))
+        issued = _parse_amazon_date(_first_present(row, "Issuance Date"))
+
+        fields: Dict[str, Any] = {"Montant initial": f"{original:.2f} {currency}".strip()}
+        if remaining is not None:
+            fields["Solde restant"] = f"{remaining:.2f} {currency}".strip()
+        if expires:
+            fields["Expiration"] = expires.strftime("%d/%m/%Y")
+        for label, key in (("Statut", "Status"), ("Mode de livraison", "Delivery Type"), ("Site", "Marketplace")):
+            value = _first_present(row, key)
+            if value:
+                fields[label] = value
+
+        return NormalizedItem(
+            item_type="gift_card",
+            category="Cartes cadeaux",
+            timestamp=issued,
+            title=None,
+            content=f"Carte cadeau {original:.2f} {currency}".strip(),
+            author=None,
+            context=_first_present(row, "External Transaction ID"),
+            fields=fields,
+            media=[],
+            raw=row,
+        )
+
+    # -- Saved delivery addresses ----------------------------------------------
+    # "Your Saved Addresses/Addresses.csv" -- confirmed real header: Address
+    # Line 1-3, Country Code, Creation Date, Family/Given/Middle Name, Is
+    # Address Active, Label, Last Order Date, Municipality, Name, Postal Code,
+    # plus phone, email and Amazon Key columns, which are not read.
+
+    def _parse_saved_addresses(self, root: Path) -> Iterator[NormalizedItem]:
+        yield from self._parse_csv_category(root, "Your Saved Addresses/Addresses*.csv", self._normalize_saved_address)
+
+    def _normalize_saved_address(self, row: Dict[str, str]) -> Optional[NormalizedItem]:
+        lines = [_first_present(row, key) for key in ("Address Line 1", "Address Line 2", "Address Line 3")]
+        street = ", ".join(line for line in lines if line)
+        city = _first_present(row, "Municipality")
+        postal = _first_present(row, "Postal Code")
+        if not street and not postal:
+            return None
+
+        locality = " ".join(part for part in (postal, city) if part)
+        last_order = _parse_amazon_date(_first_present(row, "Last Order Date"))
+        fields: Dict[str, Any] = {}
+        if locality:
+            fields["Ville"] = locality
+        country = _first_present(row, "Country Code")
+        if country:
+            fields["Pays"] = country
+        label = _first_present(row, "Label")
+        if label:
+            fields["Libellé"] = label
+        active = _first_present(row, "Is Address Active")
+        if active:
+            fields["Active"] = "Oui" if active.lower() == "yes" else "Non"
+        if last_order:
+            fields["Dernière commande"] = last_order.strftime("%d/%m/%Y")
+
+        return NormalizedItem(
+            item_type="saved_address",
+            category="Adresses",
+            timestamp=_parse_amazon_date(_first_present(row, "Creation Date")),
+            title=None,
+            content=_first_present(row, "Name") or label or street,
+            author=None,
+            context=street or None,
+            fields=fields or None,
+            media=[],
+            raw=row,
+        )
+
+    # -- Delivery preferences (safe place, etc.) -------------------------------
+    # "Your Address Preferences & Delivery/Address Preferences.csv" -- confirmed
+    # real header: Address ID, Attribute Data, Attribute Type, Country Code. The
+    # Address ID points at a saved address; it is not used here.
+
+    def _parse_address_preferences(self, root: Path) -> Iterator[NormalizedItem]:
+        yield from self._parse_csv_category(
+            root, "Your Address Preferences & Delivery/Address Preferences*.csv", self._normalize_address_preference
+        )
+
+    def _normalize_address_preference(self, row: Dict[str, str]) -> Optional[NormalizedItem]:
+        value = _first_present(row, "Attribute Data")
+        if not value:
+            return None
+        return NormalizedItem(
+            item_type="delivery_preference",
+            category="Adresses",
+            timestamp=None,
+            title=None,
+            content=value,
+            author=None,
+            context=_first_present(row, "Attribute Type"),
+            fields=None,
             media=[],
             raw=row,
         )
