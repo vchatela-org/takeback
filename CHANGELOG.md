@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/vchatela-org/takeback/compare/v1.4.0...v1.5.0) (2026-10-22)
+
+
+### Features
+
+* add a Vidéo tab for Amazon's Prime Video viewing history ([#31](https://github.com/vchatela-org/takeback/issues/31)) ([65e3ece](https://github.com/vchatela-org/takeback/commit/65e3ece787b8715edd8aaae46aeed1838dd3d705))
+
 ## [1.4.0](https://github.com/vchatela-org/takeback/compare/v1.3.0...v1.4.0) (2026-10-22)
 
 
