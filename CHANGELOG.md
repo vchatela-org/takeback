@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/vchatela-org/takeback/compare/v1.3.0...v1.4.0) (2026-10-22)
+
+
+### Features
+
+* read Amazon's Prime Video, gift card, address and Audible credit files ([#29](https://github.com/vchatela-org/takeback/issues/29)) ([84eb437](https://github.com/vchatela-org/takeback/commit/84eb4376ad27919834e0db6fec96522870306999))
+
 ## [1.3.0](https://github.com/vchatela-org/takeback/compare/v1.2.1...v1.3.0) (2026-10-19)
 
 
