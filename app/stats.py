@@ -666,6 +666,110 @@ def build_library_arrivals(rows: List[LibraryRow], granularity: str) -> Dict:
 
 
 # ────────────────────────────────────────────────
+# Prime Video (Amazon): what was watched, on which device, and when
+# ────────────────────────────────────────────────
+
+VIDEO_ITEM_TYPES = ["prime_video_view"]
+# Watch time as the importer states it ("15 min", rounded to the nearest
+# minute, so a view under 30 seconds reads as "0 min").
+VIDEO_MINUTES_FIELD = "Durée vue"
+VIDEO_DEVICE_FIELD = "Appareil"
+
+
+def video_minutes(fields: Dict) -> float:
+    return extract_leading_number(fields.get(VIDEO_MINUTES_FIELD)) or 0.0
+
+
+def build_video_dashboard(rows: List[DashboardRow], granularity: str) -> Dict:
+    """rows: prime_video_view items. Watch time and view counts per bucket,
+    plus totals that also count the views with no date (which can't be
+    placed on the chart but are still views)."""
+    bucket_set = set()
+    minutes_totals: Dict[datetime, float] = {}
+    views_counts: Dict[datetime, int] = {}
+    total_minutes = 0.0
+    total_views = 0
+
+    for _id, ts, _item_type, _context, _content, fields_json in rows:
+        minutes = video_minutes(_fields(fields_json))
+        total_views += 1
+        total_minutes += minutes
+        if ts is None:
+            continue
+        bucket = _bucket_key(ts, granularity)
+        bucket_set.add(bucket)
+        minutes_totals[bucket] = minutes_totals.get(bucket, 0.0) + minutes
+        views_counts[bucket] = views_counts.get(bucket, 0) + 1
+
+    buckets, axis = _axis(bucket_set, granularity)
+    axis.update({
+        "minutes_series": [{
+            "label": "Prime Video", "slot": 0, "keys": VIDEO_ITEM_TYPES,
+            "data": [round(minutes_totals.get(b, 0.0), 1) for b in buckets],
+        }],
+        "views_series": [{
+            "label": "Visionnages", "slot": 0, "keys": VIDEO_ITEM_TYPES,
+            "data": [views_counts.get(b, 0) for b in buckets],
+        }],
+        "total_views": total_views,
+        "total_minutes": total_minutes,
+    })
+    return axis
+
+
+def build_video_titles(rows: List[DashboardRow], limit: Optional[int] = 15) -> List[Dict]:
+    """Most watched titles by time: [{label, minutes, views, last}]. Grouped
+    by the title itself (the item's content): the panel can't drill into
+    them, since the importer leaves the title's own column empty."""
+    totals: Dict[str, Dict] = {}
+    for _id, ts, _item_type, _context, title, fields_json in rows:
+        if not title:
+            continue
+        entry = totals.setdefault(title, {"label": title, "minutes": 0.0, "views": 0, "last": None})
+        entry["minutes"] += video_minutes(_fields(fields_json))
+        entry["views"] += 1
+        entry["last"] = _latest(entry["last"], ts)
+    ranked = sorted(totals.values(), key=lambda e: (-e["minutes"], e["label"]))[:limit]
+    for entry in ranked:
+        entry["minutes"] = round(entry["minutes"], 1)
+    return ranked
+
+
+def build_video_devices(rows: List[DashboardRow]) -> List[Dict]:
+    """Watch time per device that logged views, busiest first:
+    [{label, minutes, views}]. Views with no device recorded drop out."""
+    totals: Dict[str, Dict] = {}
+    for _id, _ts, _item_type, _context, _content, fields_json in rows:
+        fields = _fields(fields_json)
+        device = fields.get(VIDEO_DEVICE_FIELD)
+        if not device:
+            continue
+        entry = totals.setdefault(device, {"label": device, "minutes": 0.0, "views": 0})
+        entry["minutes"] += video_minutes(fields)
+        entry["views"] += 1
+    ranked = sorted(totals.values(), key=lambda e: (-e["minutes"], e["label"]))
+    for entry in ranked:
+        entry["minutes"] = round(entry["minutes"], 1)
+    return ranked
+
+
+def video_days(rows: List[DashboardRow]) -> List[date]:
+    """The days with at least one dated view, in order."""
+    return sorted({ts.date() for _id, ts, *_rest in rows if ts is not None})
+
+
+def build_video_heatmap(rows: List[DashboardRow]) -> List[List[int]]:
+    """7 x 24 grid of watch minutes, by the weekday and hour a view started
+    (UTC, as the export states) -- the same rule as the panel a cell opens."""
+    grid = [[0.0] * 24 for _ in range(7)]
+    for _id, ts, _item_type, _context, _content, fields_json in rows:
+        if ts is None or not has_time_of_day(ts):
+            continue
+        grid[ts.weekday()][ts.hour] += video_minutes(_fields(fields_json))
+    return [[round(minutes) for minutes in day] for day in grid]
+
+
+# ────────────────────────────────────────────────
 # Purchases & returns (Amazon)
 # ────────────────────────────────────────────────
 

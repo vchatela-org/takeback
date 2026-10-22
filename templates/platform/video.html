@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Vidéo — {{ platform.label }}{% endblock %}
+
+{% set d = dashboard %}
+
+{% block content %}
+{% include "platform/_header.html" %}
+
+{% call m.filter_bar(request, date_from, date_to, years, granularity, undated) %}{% endcall %}
+
+{% if d.total_views == 0 %}
+<div class="card">
+  <div class="card-body empty-state">
+    <i class="bi bi-play-btn"></i>
+    <p class="mt-2 mb-0">Aucun visionnage Prime Video sur cette période.</p>
+  </div>
+</div>
+{% else %}
+
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+  <div class="col">{{ m.kpi("Temps de visionnage", total_minutes_label, icon="bi-hourglass-split",
+                            sub=(d.total_views | num) ~ " visionnages",
+                            tooltip="Durées de visionnage telles qu'Amazon les enregistre, arrondies à la minute.") }}</div>
+  <div class="col">{{ m.kpi("Titres vus", title_count | num, icon="bi-collection-play",
+                            sub="films et épisodes différents sur la période") }}</div>
+  <div class="col">{{ m.kpi("Jours de visionnage", view_days | num, icon="bi-calendar-check",
+                            sub=(per_day_label ~ " par jour de visionnage") if per_day_label else None) }}</div>
+  <div class="col">{{ m.kpi("Plus longue série", ((streak.days | num) ~ " jour" ~ ("s" if streak.days > 1 else "")) if streak else "—",
+                            icon="bi-fire",
+                            sub=("du " ~ (streak.start | date_fr) ~ " au " ~ (streak.end | date_fr)) if streak and streak.days > 1 else None,
+                            tooltip="Jours consécutifs avec au moins un visionnage.") }}</div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-xl-7">
+    {{ m.chart_card("minutesChart", "Temps de visionnage", hint="Cliquez sur une barre pour voir les visionnages.", height=320, values_toggle=True) }}
+  </div>
+  <div class="col-xl-5">
+    <div class="card chart-card h-100">
+      <div class="card-body">
+        <div class="chart-head">
+          <div>
+            <h2 class="chart-title">Titres les plus regardés</h2>
+            <p class="chart-hint">Par temps passé, sur la période.</p>
+          </div>
+        </div>
+        <ol class="rank-list">
+          {% set top_max = titles[0].minutes if titles else 0 %}
+          {% for t in titles %}
+          <li>
+            <div class="rank-row">
+              <span class="rank-label" title="{{ t.label }}">{{ t.label }}</span>
+              <span class="num fw-semibold">{{ (t.minutes // 60) | int }} h {{ '%02d' | format((t.minutes % 60) | int) }}</span>
+              <span class="small text-muted">{{ t.views | num }} visionnage(s)</span>
+              <span></span>
+              <span class="rank-bar"><span style="width: {{ (t.minutes / top_max * 100) if top_max else 0 }}%"></span></span>
+            </div>
+          </li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if heatmap_max %}
+<div class="mb-4">
+  {{ m.heatmap_card(request, "Quand vous regardez",
+                    "Minutes de visionnage par jour de la semaine et heure de début (UTC, comme dans l'export). Cliquez sur une case pour voir les visionnages.",
+                    heatmap, heatmap_max, weekday_names, '/p/' ~ platform.key ~ '/panel', "min",
+                    drill_params={'item_type': ['prime_video_view']}) }}
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-xl-6">
+    {{ m.chart_card("viewsChart", "Visionnages", height=260) }}
+  </div>
+  <div class="col-xl-6">
+    <div class="card chart-card h-100">
+      <div class="card-body">
+        <div class="chart-head">
+          <div>
+            <h2 class="chart-title">Appareils</h2>
+            <p class="chart-hint">Par temps de visionnage. Cliquez pour voir les visionnages.</p>
+          </div>
+        </div>
+        {% if devices %}
+        <ol class="rank-list">
+          {% for dev in devices %}
+          <li>
+            <a class="rank-row" href="#"
+               data-drill-url="{{ url_with(request, '/p/' ~ platform.key ~ '/panel', item_type='prime_video_view', device=dev.label, granularity=None) }}"
+               data-drill-title="{{ dev.label }}" data-drill-subtitle="{{ dev.views | num }} visionnage(s)">
+              <span class="rank-label" title="{{ dev.label }}">{{ dev.label }}</span>
+              <span class="num fw-semibold">{{ (dev.minutes // 60) | int }} h {{ '%02d' | format((dev.minutes % 60) | int) }}</span>
+              <span class="small text-muted">{{ dev.views | num }} visionnage(s)</span>
+              <span></span>
+              <span class="rank-bar"><span style="width: {{ (dev.minutes / device_max * 100) if device_max else 0 }}%"></span></span>
+            </a>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <p class="text-muted small mb-0">Aucun appareil enregistré pour ces visionnages.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/chart.umd.min.js"></script>
+<script>
+(function () {
+  var data = {{ dashboard | tojson }};
+  var source = {{ platform.key | tojson }};
+
+  function viewsDrill(index) {
+    var range = data.ranges[index];
+    return {
+      url: TB.url('/p/' + source + '/panel', {
+        item_type: ['prime_video_view'], date_from: range[0], date_to: range[1],
+      }),
+      title: 'Visionnages Prime Video',
+      subtitle: data.labels[index],
+    };
+  }
+
+  TB.bar('minutesChart', { labels: data.labels, series: data.minutes_series, kind: 'minutes', drill: viewsDrill });
+  TB.bar('viewsChart', { labels: data.labels, series: data.views_series, kind: 'number', drill: viewsDrill });
+})();
+</script>
+{% endblock %}

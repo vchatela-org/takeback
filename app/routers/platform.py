@@ -694,6 +694,49 @@ def reading(
 
 
 # ────────────────────────────────────────────────
+# Vidéo (Prime Video): what was watched, on which device, and when
+# ────────────────────────────────────────────────
+
+@router.get("/video", response_class=HTMLResponse)
+def video(
+    source: str, request: Request,
+    granularity: str = "month", date_from: Optional[str] = None, date_to: Optional[str] = None,
+    include_1970: bool = False,
+    db: Session = Depends(get_db),
+):
+    ctx = _page(request, db, source, "video", include_1970)
+    if ctx is None:
+        return _to_overview(source)
+    granularity = _granularity(granularity)
+
+    all_rows = crud.get_dashboard_rows(db, source, stats.VIDEO_ITEM_TYPES, include_1970=include_1970)
+    rows = stats.in_period(all_rows, parse_date(date_from), parse_date(date_to, end_of_day=True))
+    dashboard = stats.build_video_dashboard(rows, granularity)
+    titles = stats.build_video_titles(rows, limit=None)
+    devices = stats.build_video_devices(rows)
+    days = stats.video_days(rows)
+    heatmap = stats.build_video_heatmap(rows)
+
+    ctx.update(_period_context(date_from, date_to, _years_of(all_rows)))
+    ctx.update({
+        "granularity": granularity,
+        "dashboard": dashboard,
+        "titles": titles[:15],
+        "title_count": len(titles),
+        "devices": devices,
+        "device_max": devices[0]["minutes"] if devices else 0,
+        "total_minutes_label": stats.format_duration_minutes(dashboard["total_minutes"]),
+        "view_days": len(days),
+        "per_day_label": stats.format_duration_minutes(dashboard["total_minutes"] / len(days)) if days else None,
+        "streak": stats.longest_streak(days),
+        "heatmap": heatmap,
+        "heatmap_max": max((max(row) for row in heatmap), default=0),
+        "weekday_names": stats.WEEKDAY_NAMES_FR,
+    })
+    return templates.TemplateResponse(request, "platform/video.html", ctx)
+
+
+# ────────────────────────────────────────────────
 # Library (Kindle): every book owned, sent or read
 # ────────────────────────────────────────────────
 

@@ -85,6 +85,7 @@ CATALOGS: Dict[str, Dict[str, str]] = {
         "view.purchases": "Achats",
         "view.reading": "Lecture & écoute",
         "view.usage": "Usages",
+        "view.video": "Vidéo",
 
         # Where to ask a platform for your export, shown on its page.
         "export.amazon": "Compte › Paramètres de confidentialité › Demander vos données",
@@ -123,6 +124,7 @@ CATALOGS: Dict[str, Dict[str, str]] = {
         "view.purchases": "Purchases",
         "view.reading": "Reading & listening",
         "view.usage": "Usage",
+        "view.video": "Video",
 
         "export.amazon": "Account › Privacy settings › Request your data",
         "export.facebook": "Accounts Center › Download your information (JSON format)",
