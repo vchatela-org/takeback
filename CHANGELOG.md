@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/vchatela-org/takeback/compare/v1.5.0...v1.5.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **docker:** run the container as an unprivileged user ([#34](https://github.com/vchatela-org/takeback/issues/34)) ([b1ebda7](https://github.com/vchatela-org/takeback/commit/b1ebda751e312db817dafd1c307cd6bf5c1dd74f))
+
 ## [1.5.0](https://github.com/vchatela-org/takeback/compare/v1.4.0...v1.5.0) (2026-10-22)
 
 
