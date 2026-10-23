@@ -82,12 +82,16 @@ platform — treat the app as being as sensitive as the exports you feed it.
 ### Docker
 
 ```bash
+mkdir -p data   # the container runs as uid 1000 and must be able to write here
 docker compose up -d
 ```
 
 The app is then available on http://localhost:8010.
 The SQLite database and the extracted exports are persisted in `./data`
-(`data/db/`, `data/uploads/`, `data/imports/`).
+(`data/db/`, `data/uploads/`, `data/imports/`). The container runs as the
+unprivileged user `takeback` (uid/gid 1000); if `./data` was created by an
+earlier container that ran as root, hand it over once with
+`sudo chown -R 1000:1000 data`.
 
 ## Usage
 

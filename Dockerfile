@@ -17,7 +17,15 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 COPY . .
 
-RUN mkdir -p /app/data/db /app/data/uploads /app/data/imports
+# Everything the app writes (db, uploads, extracted imports) lives under
+# /app/data. Run as an unprivileged user owning it: a container running as root
+# can escape to the host through a kernel bug (Trivy DS-0002).
+RUN mkdir -p /app/data/db /app/data/uploads /app/data/imports \
+    && addgroup -S -g 1000 takeback \
+    && adduser -S -D -H -u 1000 -G takeback takeback \
+    && chown -R takeback:takeback /app
+
+USER takeback
 
 EXPOSE 8000
 
