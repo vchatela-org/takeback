@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.3](https://github.com/vchatela-org/takeback/compare/v1.5.2...v1.5.3) (2026-10-29)
+
+
+### Dependencies
+
+* bump fastapi from 0.161.1 to 0.162.0 ([#40](https://github.com/vchatela-org/takeback/issues/40)) ([cb98a2e](https://github.com/vchatela-org/takeback/commit/cb98a2e69dc37b304d83c468d5e1966f24489537))
+
 ## [1.5.2](https://github.com/vchatela-org/takeback/compare/v1.5.1...v1.5.2) (2026-10-26)
 
 
