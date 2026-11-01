@@ -62,6 +62,20 @@
 * Bump pydantic-settings from 2.15.0 to 2.16.0 ([#23](https://github.com/vchatela-org/takeback/issues/23)) ([06e387d](https://github.com/vchatela-org/takeback/commit/06e387d14c725b07680b1f77644bcd8907449382))
 * Bump sqlalchemy from 2.1.3 to 2.1.4 ([#7](https://github.com/vchatela-org/takeback/issues/7)) ([d97b87e](https://github.com/vchatela-org/takeback/commit/d97b87e2536f5138f46ff349da89b94568a9a775))
 
+## [1.2.1](https://github.com/vchatela-org/takeback/compare/v1.2.0...v1.2.1) (2026-10-19)
+
+
+### Dependencies
+
+* Bump fastapi from 0.143.0 to 0.143.2
+* Bump pydantic-settings from 2.15.0 to 2.16.0
+* Bump pydantic from 2.14.0 to 2.14.1
+* Update httpx requirement from >=0.27 to >=0.28.1
+
+### CI
+
+* Bump the shared `pr-title` and `release-please` workflows to 1.3.1
+
 ## [1.2.0](https://github.com/vchatela-org/takeback/compare/v1.1.0...v1.2.0) (2026-10-14)
 
 
