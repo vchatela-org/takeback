@@ -2,5 +2,5 @@
 # requirements.txt these never enter the runtime image, so reproducibility of
 # the container does not depend on them.
 -r requirements.txt
-pytest>=9.1.1
+pytest>=9.2.0
 httpx>=0.28.1
