@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.5.4](https://github.com/vchatela-org/takeback/compare/v1.5.3...v1.5.4) (2026-11-02)
+
+
+### Dependencies
+
+* bump faker from 40.43.0 to 40.44.0 ([#44](https://github.com/vchatela-org/takeback/issues/44)) ([156b46e](https://github.com/vchatela-org/takeback/commit/156b46e46ee0eb2b984680c87999c24ca6293502))
+* bump pydantic from 2.14.1 to 2.14.2 ([#45](https://github.com/vchatela-org/takeback/issues/45)) ([0fad505](https://github.com/vchatela-org/takeback/commit/0fad505fdb310f1e1fe6c60ecd62ebebd29a80f1))
+* bump pydantic-settings from 2.16.1 to 2.16.2 ([#46](https://github.com/vchatela-org/takeback/issues/46)) ([83b7d28](https://github.com/vchatela-org/takeback/commit/83b7d283bb4abbece80b698e45342a176fe27a72))
+
 ## [1.5.3](https://github.com/vchatela-org/takeback/compare/v1.5.2...v1.5.3) (2026-10-29)
 
 
