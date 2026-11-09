@@ -171,6 +171,13 @@ TYPE_LABELS: Dict[str, Dict[str, str]] = {
         "wishlist_item": "Wishlist item",
         "newsletter_preference": "Newsletter subscription",
         "size_fit": "Body measurements",
+        # AliExpress.
+        "aliexpress_order": "Ordered item",
+        "aliexpress_unpaid_order": "Unpaid order",
+        "aliexpress_refund": "Refund",
+        "aliexpress_dispute": "Dispute",
+        "aliexpress_review": "Review",
+        "aliexpress_question": "Product question",
         # Reddit.
         "announcement": "Announcement",
         "post_vote": "Post vote",

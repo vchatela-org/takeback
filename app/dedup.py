@@ -79,6 +79,10 @@ VOLATILE_FIELDS = {
     # seller are fixed when the order is placed, so they stay in the
     # fingerprint -- two same-named lines differing by size must stay distinct.
     "zalando_order": ("Statut", "État de l'article"),
+    # AliExpress: a line in delivery is received, closed or disputed by the
+    # next export -- its state and closing move, the amount paid does not.
+    "aliexpress_order": ("Statut", "Clôture", "Clôturée le"),
+    "aliexpress_unpaid_order": ("Statut", "Clôture", "Clôturée le"),
 }
 # Item types dated by their latest occurrence rather than their creation (a
 # LinkedIn Learning course is dated by its last viewing): that date moves
@@ -102,6 +106,13 @@ VOLATILE_FIELDS_BY_SOURCE = {
     ("seazon_order", "seazon_refund", "order_cancelled", "meal", "subscription_plan", "notification",
      "account_log", "coupon", "profile")
 }
+# An AliExpress dispute gains events until it is settled (its timeline, last
+# step, refunded amount): only its opening date, reason, article and checkout
+# identify it. Its profile's points and level move with every order.
+VOLATILE_FIELDS_BY_SOURCE.update({
+    ("aliexpress", "aliexpress_dispute"): ALL_FIELDS,
+    ("aliexpress", "profile"): ALL_FIELDS,
+})
 
 _CHUNK = 5000
 

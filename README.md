@@ -2,7 +2,7 @@
 
 Import, parse and browse the "download your data" exports the platforms give
 you (Facebook, Instagram, Google Takeout, Amazon, LinkedIn, Seazon, Zalando,
-Reddit, and more to come) — a single self-hosted app.
+Reddit, AliExpress, and more to come) — a single self-hosted app.
 
 ## Scope
 
@@ -20,7 +20,7 @@ Where a new source goes:
 
 | The source is... | It goes... | Examples |
 |---|---|---|
-| a platform's whole "your data" archive: many categories, text, made to be browsed | into Takeback, as an import module | Meta, Google Takeout, Amazon (Kindle and Audible included), LinkedIn, Seazon, Zalando, Reddit, the Spotify export |
+| a platform's whole "your data" archive: many categories, text, made to be browsed | into Takeback, as an import module | Meta, Google Takeout, Amazon (Kindle and Audible included), LinkedIn, Seazon, Zalando, Reddit, AliExpress, the Spotify export |
 | measurements to plot or cross-reference, from the source's API and/or its export file | into a dedicated sync tool, which writes to InfluxDB | Renpho, Whoop, MyTherapy, MyFitnessPal, Audiobookshelf (see [Tributary](https://github.com/vchatela-org/tributary)) |
 | a tool that already has its own storage and interface | nowhere: it stays as it is | garmin-grafana, Tautulli, Your Spotify |
 
@@ -96,8 +96,8 @@ earlier container that ran as root, hand it over once with
 ## Usage
 
 1. On the **Imports** page, drop the `.zip` archive downloaded from Amazon,
-   Facebook, Instagram (JSON format), Google Takeout, LinkedIn, Seazon, Zalando
-   or Reddit. For an export split across several zips (common for Facebook on
+   Facebook, Instagram (JSON format), Google Takeout, LinkedIn, Seazon, Zalando,
+   Reddit or AliExpress. For an export split across several zips (common for Facebook on
    large accounts), select them all at once: each file is sent in its own
    request (rather than one multi-gigabyte bundle) via `/imports/start` →
    `/imports/{id}/upload-file` × N → `/imports/{id}/finalize`, so nothing
@@ -252,7 +252,7 @@ everything else (sleep, sport, health...). With `TAKEBACK_INFLUXDB_URL`, a push
 | `DigitalStats` | `item` | any dated item, all platforms | `source` (= platform), `category`, `item_type` | `count` (i) |
 | `MediaStats` | `reading_session` | Kindle and Audible sessions | `source` (`kindle`/`audible`), `kind` (`ebook`/`audiobook`), `device` | `minutes` (f), `sessions` (i), `pages` (i, Kindle), `title` (s) |
 | `MediaStats` | `book_finished` | finished Kindle books | `source`, `kind` | `count` (i), `title` (s) |
-| `ShoppingStats` | `purchase` | purchase lines (Amazon, Seazon and Zalando orders, digital, Audible) | `source`, `kind` (`retail`/`digital`/`audible`/`meal`/`fashion`), `department`, `currency` | `amount` (f), `lines` (i), `orders` (i) |
+| `ShoppingStats` | `purchase` | purchase lines (Amazon, Seazon, Zalando and AliExpress orders, digital, Audible) | `source`, `kind` (`retail`/`digital`/`audible`/`meal`/`fashion`/`marketplace`), `department`, `currency` | `amount` (f), `lines` (i), `orders` (i) |
 
 On **every** point: the tags `platform` (the Takeback platform), `via=takeback`,
 `user` (if configured) and `time_precision` (`second`, or `day` for an item
@@ -267,7 +267,11 @@ importer names under "Catégorie") and `source=seazon` — enough to separate th
 from Amazon in Grafana, `kind` and `source` both being tags. Zalando's are too
 (`zalando_order`): they arrive under `kind=fashion`, with `department` set to
 the shop the order was placed on ("Zalando" or "Zalando Privé", what its importer
-names under "Boutique") and `source=zalando`.
+names under "Boutique") and `source=zalando`. AliExpress's (`aliexpress_order`)
+arrive under `kind=marketplace` and `source=aliexpress`; their export names no
+product category, so `department` holds the currency the line was charged in
+(`USD`/`EUR`, the same as the `currency` tag) — an AliExpress history mixes the
+two, and its purchases page groups by currency for that reason.
 
 Rules, all covered by `tests/test_influx_export.py`:
 

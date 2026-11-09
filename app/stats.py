@@ -63,8 +63,18 @@ SEAZON_REFUND_TYPE = "seazon_refund"
 ZALANDO_ORDER_TYPE = "zalando_order"
 # What came back on one of those lines, its own return type too.
 ZALANDO_RETURN_TYPE = "zalando_return"
-PURCHASE_LINE_ITEM_TYPES = ["order_item", "digital_order", "audible_order", SEAZON_ORDER_TYPE, ZALANDO_ORDER_TYPE]
-RETURN_ITEM_TYPES = ["return", "return_status", SEAZON_REFUND_TYPE, ZALANDO_RETURN_TYPE]
+# An AliExpress order line, its own type too: no department, no ASIN -- a
+# currency of its own instead, AliExpress charging some checkouts in dollars
+# and others in euros (see app/importers/aliexpress.py). Its purchase page
+# groups by that currency, the one split that never adds dollars to euros.
+ALIEXPRESS_ORDER_TYPE = "aliexpress_order"
+# Money given back on one of those lines: a dispute's approved refund, or a
+# paid order closed before it was received.
+ALIEXPRESS_REFUND_TYPE = "aliexpress_refund"
+PURCHASE_LINE_ITEM_TYPES = [
+    "order_item", "digital_order", "audible_order", SEAZON_ORDER_TYPE, ZALANDO_ORDER_TYPE, ALIEXPRESS_ORDER_TYPE,
+]
+RETURN_ITEM_TYPES = ["return", "return_status", SEAZON_REFUND_TYPE, ZALANDO_RETURN_TYPE, ALIEXPRESS_REFUND_TYPE]
 PURCHASE_ITEM_TYPES = PURCHASE_LINE_ITEM_TYPES + RETURN_ITEM_TYPES
 # What gates Seazon's own two tabs: a box (the formula it was paid as) and
 # the dishes that went in it. Amazon holds neither type.
@@ -780,10 +790,11 @@ _PURCHASE_TYPES = {
     "audible_order": "Commandes numériques",
     SEAZON_ORDER_TYPE: "Commandes de repas",
     ZALANDO_ORDER_TYPE: "Commandes",
+    ALIEXPRESS_ORDER_TYPE: "Commandes",
 }
 _RETURN_AMOUNT_FIELD = {
     "return": "Montant remboursé", "return_status": "Montant", SEAZON_REFUND_TYPE: "Montant remboursé",
-    ZALANDO_RETURN_TYPE: "Montant remboursé",
+    ZALANDO_RETURN_TYPE: "Montant remboursé", ALIEXPRESS_REFUND_TYPE: "Montant remboursé",
 }
 
 # Only "order_item" (retail) carries a real product department (Order
@@ -802,6 +813,9 @@ _SEAZON_CATEGORY_FIELD = "Catégorie"
 # A Zalando line has no department either: the shop the order was placed on is
 # what its importer labels under this field name.
 _ZALANDO_CATEGORY_FIELD = "Boutique"
+# An AliExpress line names no product category at all; what does split its
+# spend honestly is the currency it was charged in (its amount's own code).
+_CURRENCY_CATEGORY_LABEL = "Devise"
 
 # Dimensions purchases can be split by -- UI key -> the label the purchase
 # list and the charts show for it. "none" and "category" are handled
@@ -861,11 +875,19 @@ _PURCHASE_DIMENSIONS_BY_SOURCE = {
     # is not always the delivery one. It has no product condition, so that
     # single Amazon dimension is the one left out.
     "zalando": ("category", "none", "shipping_address", "billing_address", "payment_method", "status"),
+    # An AliExpress line carries its currency (read as its category), its
+    # status and where it was shipped -- no billing address, payment method,
+    # website or product condition.
+    "aliexpress": ("category", "none", "shipping_address", "status"),
 }
-_PURCHASE_CATEGORY_LABELS_BY_SOURCE = {"seazon": "Catégorie", "zalando": "Boutique"}
+_PURCHASE_CATEGORY_LABELS_BY_SOURCE = {
+    "seazon": "Catégorie", "zalando": "Boutique", "aliexpress": _CURRENCY_CATEGORY_LABEL,
+}
 # The item type a platform's own order lines use, for the one link that has
 # to name it: a return's "what was ordered" column (templates/browse.html).
-_PURCHASE_LINE_TYPE_BY_SOURCE = {"seazon": SEAZON_ORDER_TYPE, "zalando": ZALANDO_ORDER_TYPE}
+_PURCHASE_LINE_TYPE_BY_SOURCE = {
+    "seazon": SEAZON_ORDER_TYPE, "zalando": ZALANDO_ORDER_TYPE, "aliexpress": ALIEXPRESS_ORDER_TYPE,
+}
 
 _NO_GROUPING_LABEL = "Total"
 _UNSET_LABEL = "Non renseigné"
@@ -945,6 +967,8 @@ def purchase_category(item_type: str, fields: Dict) -> str:
         return fields.get(_SEAZON_CATEGORY_FIELD) or "Sans catégorie"
     if item_type == ZALANDO_ORDER_TYPE:
         return fields.get(_ZALANDO_CATEGORY_FIELD) or "Sans boutique"
+    if item_type == ALIEXPRESS_ORDER_TYPE:
+        return extract_currency(fields.get("Montant")) or "Sans devise"
     return _DIGITAL_CATEGORY_LABEL
 
 

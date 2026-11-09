@@ -73,7 +73,7 @@ _PLATFORMS = {
 }
 
 # Shown greyed out, as coming next, until an import module reads their export.
-_PLANNED: tuple = ("aliexpress",)
+_PLANNED: tuple = ()
 
 
 def get(key: str) -> Platform:
