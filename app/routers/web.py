@@ -563,6 +563,9 @@ _ORDER_CONTEXT_TYPES = (
     # Zalando: an order line and what came back on it both carry the order
     # number of `orders-master.csv`.
     "zalando_order", "zalando_return",
+    # AliExpress: a line, its refund, its dispute and its review all carry the
+    # checkout (`parent_orderid`) the line was paid in.
+    "aliexpress_order", "aliexpress_unpaid_order", "aliexpress_refund", "aliexpress_dispute", "aliexpress_review",
 )
 
 

@@ -33,7 +33,7 @@ from typing import Any, Optional
 from faker import Faker
 
 from app.database import anonymized_artifact
-from app.importers import linkedin, zalando
+from app.importers import aliexpress, linkedin, xlsx, zalando
 
 # Field names (lowercased) whose string value is a person's name-like identity.
 NAME_KEYS = {
@@ -422,6 +422,49 @@ def _anonymize_csv(anonymizer: Anonymizer, text: str, escapechar: Optional[str] 
     return out.getvalue()
 
 
+_MONEY_NUMBER_RE = re.compile(r"\d[\d.,]*\d|\d")
+
+
+def _anonymize_aliexpress_cell(anonymizer: Anonymizer, column: str, value: str) -> str:
+    """One cell of AliExpress's workbook, by what its column is
+    (aliexpress.anonymization_kind); any other column is free text."""
+    kind = aliexpress.anonymization_kind(column)
+    if kind == "keep":
+        return value
+    if kind == "id":
+        return anonymizer._pseudo_id(value)
+    if kind == "date":
+        return str(anonymizer._jitter_timestamp(value))
+    if kind == "amount":
+        return anonymizer._pseudo_amount(value)
+    if kind == "money":
+        return _MONEY_NUMBER_RE.sub(lambda m: anonymizer._pseudo_amount(m.group().replace(",", ".")), value)
+    return anonymizer.walk(column, value) if column else anonymizer._pseudo_text(value)
+
+
+def _anonymize_aliexpress_workbook(anonymizer: Anonymizer, path: Path) -> bytes:
+    """AliExpress's export is one .xlsx workbook: each sheet keeps its header
+    row (column names are structural) and has every data cell anonymized by
+    what its column is -- see aliexpress.anonymization_kind for why the
+    generic CSV rule would not do. Written back as an .xlsx, so the copy still
+    imports as AliExpress."""
+    sheets = {}
+    for name, rows in xlsx.read_sheets(path).items():
+        out, header = [], None
+        for row in rows:
+            if header is None:
+                out.append(row)
+                if any(cell.strip() for cell in row):
+                    header = [cell.strip() for cell in row]
+                continue
+            out.append([
+                _anonymize_aliexpress_cell(anonymizer, header[i] if i < len(header) else "", cell) if cell else cell
+                for i, cell in enumerate(row)
+            ])
+        sheets[name] = out
+    return xlsx.write_workbook(sheets)
+
+
 def _new_relpath(anonymizer: Anonymizer, paths: PathAnonymizer, rel: str, source_key: Optional[str]) -> str:
     new_rel = paths.rename_relpath(rel)
     if source_key == "linkedin":
@@ -473,6 +516,13 @@ def _anonymize_one_file(zf: zipfile.ZipFile, anonymizer: Anonymizer, paths: Path
             zf.writestr(new_rel, _anonymize_csv(
                 anonymizer, path.read_text(encoding="utf-8", errors="replace"), escapechar, header,
             ))
+            return
+        except Exception:
+            pass
+
+    if suffix == ".xlsx" and source_key == "aliexpress" and aliexpress.is_workbook(path):
+        try:
+            zf.writestr(new_rel, _anonymize_aliexpress_workbook(anonymizer, path))
             return
         except Exception:
             pass
