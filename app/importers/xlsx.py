@@ -13,7 +13,6 @@ gets its own: every part is read through a byte counter rather than trusting
 the sizes the workbook's central directory declares.
 """
 import io
-import re
 import zipfile
 from pathlib import Path
 from typing import Dict, IO, Iterator, List, Optional
@@ -30,7 +29,9 @@ MAX_PART_BYTES = 256 * 1024 ** 2
 
 # XML 1.0 forbids most control characters, even escaped: a cell holding one
 # would make the written workbook unreadable.
-_INVALID_XML_CHARS = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
+# A translate table rather than a regex character class: the C0 range is
+# exactly what is meant here, tab, line feed and carriage return excepted.
+_INVALID_XML_CHARS = {code: None for code in (*range(0x20), 0xFFFE, 0xFFFF) if code not in (0x09, 0x0A, 0x0D)}
 
 
 class WorkbookError(Exception):
@@ -176,7 +177,7 @@ def _column_letter(index: int) -> str:
 
 
 def _clean(value: str) -> str:
-    return escape(_INVALID_XML_CHARS.sub("", value), {'"': "&quot;"})
+    return escape(value.translate(_INVALID_XML_CHARS), {'"': "&quot;"})
 
 
 def write_workbook(sheets: Dict[str, List[List[str]]]) -> bytes:
