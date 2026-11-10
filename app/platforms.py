@@ -64,6 +64,12 @@ _PLATFORMS = {
     # Reddit's request form has an address of its own: like Google's, the hint
     # is that address, the same in every language.
     "reddit": Platform("reddit", "Reddit", "bi-reddit", "#ff4500", "reddit.com/settings/data-request"),
+    # AliExpress's request form has an address of its own, like Reddit's: the
+    # hint is that address, the same in every language.
+    "aliexpress": Platform(
+        "aliexpress", "AliExpress", "bi-cart3", "#e62e04",
+        "privacy.aliexpress.com/home#/request/backup",
+    ),
 }
 
 # Shown greyed out, as coming next, until an import module reads their export.
