@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0](https://github.com/vchatela-org/takeback/compare/v1.5.4...v1.6.0) (2026-11-09)
+
+
+### Features
+
+* import AliExpress's data export ([#53](https://github.com/vchatela-org/takeback/issues/53)) ([4e2f1b5](https://github.com/vchatela-org/takeback/commit/4e2f1b5c90de5794ecd095fc72fd415a4f9340bf))
+* list AliExpress as a planned platform ([#51](https://github.com/vchatela-org/takeback/issues/51)) ([46e0324](https://github.com/vchatela-org/takeback/commit/46e03247980229623240afe54c4c72f4e161128a))
+
 ## [1.5.4](https://github.com/vchatela-org/takeback/compare/v1.5.3...v1.5.4) (2026-11-02)
 
 

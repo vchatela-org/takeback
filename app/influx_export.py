@@ -63,6 +63,9 @@ _KIND_BY_PURCHASE = {
     stats.SEAZON_ORDER_TYPE: "meal",
     # Zalando's clothing orders (app/importers/zalando.py), same reasoning.
     stats.ZALANDO_ORDER_TYPE: "fashion",
+    # AliExpress's lines (app/importers/aliexpress.py): anything at all, sold
+    # by third-party sellers -- a marketplace, not a shop's own range.
+    stats.ALIEXPRESS_ORDER_TYPE: "marketplace",
 }
 # Reading/listening item type -> (tracker, kind of media).
 _READING_TRACKER = {
