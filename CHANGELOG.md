@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.6.1](https://github.com/vchatela-org/takeback/compare/v1.6.0...v1.6.1) (2026-11-10)
+
+
+### Dependencies
+
+* bump pydantic from 2.14.2 to 2.14.3 ([#48](https://github.com/vchatela-org/takeback/issues/48)) ([30e8096](https://github.com/vchatela-org/takeback/commit/30e8096642a6301dfa815e94ca750ba18798e926))
+* bump python-multipart from 0.0.32 to 0.0.33 ([#49](https://github.com/vchatela-org/takeback/issues/49)) ([a499381](https://github.com/vchatela-org/takeback/commit/a49938150487e948a4046e5166ea2f6a0bb48fb6))
+* bump sqlalchemy from 2.1.6 to 2.1.8 ([#50](https://github.com/vchatela-org/takeback/issues/50)) ([268a244](https://github.com/vchatela-org/takeback/commit/268a244785cf3214e221a14280c9a5bfd5861cde))
+
 ## [1.6.0](https://github.com/vchatela-org/takeback/compare/v1.5.4...v1.6.0) (2026-11-09)
 
 
