@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.6.2](https://github.com/vchatela-org/takeback/compare/v1.6.1...v1.6.2) (2026-11-17)
+
+
+### Dependencies
+
+* bump faker from 40.44.0 to 40.54.0 ([#57](https://github.com/vchatela-org/takeback/issues/57)) ([49a1ee4](https://github.com/vchatela-org/takeback/commit/49a1ee47454d98a4fbe7cc5cfd691898867067ce))
+* bump fastapi from 0.162.0 to 0.162.7 ([#58](https://github.com/vchatela-org/takeback/issues/58)) ([15d4c35](https://github.com/vchatela-org/takeback/commit/15d4c35a97ee8a419aabb53955694e2cdcb963cb))
+* bump pydantic-settings from 2.16.2 to 2.16.3 ([#59](https://github.com/vchatela-org/takeback/issues/59)) ([6b94785](https://github.com/vchatela-org/takeback/commit/6b94785f45e780b3e7a52f66c23055e76d17ebae))
+
 ## [1.6.1](https://github.com/vchatela-org/takeback/compare/v1.6.0...v1.6.1) (2026-11-10)
 
 
