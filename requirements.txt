@@ -6,6 +6,6 @@ pydantic-settings==2.16.2
 jinja2==3.1.6
 python-multipart==0.0.33
 aiofiles==25.1.0
-faker==40.44.0
+faker==40.54.0
 beautifulsoup4==4.15.0
 lxml==6.1.3
