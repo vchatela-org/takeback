@@ -11,7 +11,7 @@ permissions: {}
 
 jobs:
   title:
-    uses: vchatela-org/shared-workflows/.github/workflows/pr-title.yml@5edb0a3d635f66307f3b86cc4d926c253ef40ed2 # v1.3.1
+    uses: vchatela-org/shared-workflows/.github/workflows/pr-title.yml@863059fd59f27d09fb04643bd5adf1457d3de123 # v1.3.2
     with:
       # Public repository: a fork's PR must never reach the self-hosted runners.
       runs_on: ubuntu-latest
