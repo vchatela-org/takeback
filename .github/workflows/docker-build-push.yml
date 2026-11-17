@@ -25,6 +25,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: vchatela-org/shared-workflows/.github/workflows/docker-build-push-ghcr.yml@5edb0a3d635f66307f3b86cc4d926c253ef40ed2 # v1.3.1
+    uses: vchatela-org/shared-workflows/.github/workflows/docker-build-push-ghcr.yml@863059fd59f27d09fb04643bd5adf1457d3de123 # v1.3.2
     with:
       image_name: takeback
