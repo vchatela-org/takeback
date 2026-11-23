@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/vchatela-org/takeback/compare/v1.6.3...v1.7.0) (2026-11-23)
+
+
+### Features
+
+* **influxdb:** send HTTP basic auth when configured ([#68](https://github.com/vchatela-org/takeback/issues/68)) ([396c9c4](https://github.com/vchatela-org/takeback/commit/396c9c405ee7fbb058af6ba34c6669b8da2f8268))
+
 ## [1.6.3](https://github.com/vchatela-org/takeback/compare/v1.6.2...v1.6.3) (2026-11-23)
 
 
