@@ -1,3 +1,4 @@
+import base64
 import json
 import re
 import sys
@@ -8,6 +9,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from pydantic import SecretStr
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -210,6 +212,7 @@ class FakeInflux:
 
     def __init__(self):
         self.queries, self.writes, self.fail = [], [], {}
+        self.auth = []
         self.databases = {"_internal"}
         outer = self
 
@@ -217,6 +220,7 @@ class FakeInflux:
             def do_POST(self):  # noqa: N802
                 url = urlparse(self.path)
                 params = {k: v[0] for k, v in parse_qs(url.query).items()}
+                outer.auth.append(self.headers.get("Authorization"))
                 body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode()
                 if url.path in outer.fail:
                     code, payload = outer.fail[url.path]
@@ -283,6 +287,23 @@ def test_push_one_platform_rebuilds_it_in_batches(db, influx, monkeypatch):
     # three lines of the 10:00 orders are one point each.
     assert written == {"DigitalStats": 7, "MediaStats": 3, "ShoppingStats": 3}
     assert run.message == "13 points écrits (Influxtest, reconstruit) : DigitalStats 7, MediaStats 3, ShoppingStats 3."
+
+
+def test_basic_auth_when_influxdb_has_it_enabled(db, influx, monkeypatch):
+    """A header, not `u=`/`p=` parameters: the password never reaches a URL."""
+    monkeypatch.setattr(settings, "influxdb_auth_user", "takeback")
+    monkeypatch.setattr(settings, "influxdb_auth_password", SecretStr("s3cret"))
+    run = sink.push(db, source=SOURCE)
+    assert run.status == "ok", run.message
+    header, = set(influx.auth)
+    assert header.startswith("Basic ")
+    assert base64.b64decode(header.removeprefix("Basic ")).decode() == "takeback:s3cret"
+
+
+def test_a_half_credential_is_explained(db, influx, monkeypatch):
+    monkeypatch.setattr(settings, "influxdb_auth_user", "takeback")
+    run = sink.push(db, source=SOURCE)
+    assert run.status == "error" and "définis ensemble" in run.message
 
 
 def test_existing_databases_are_left_alone(db, influx):

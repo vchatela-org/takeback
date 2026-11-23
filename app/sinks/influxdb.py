@@ -20,6 +20,7 @@ default 25 MB request body limit. The databases are created when missing
 (TAKEBACK_INFLUXDB_CREATE_DATABASES), with year-long shards, see
 create_missing_databases. stdlib urllib, no client library.
 """
+import base64
 import json
 import logging
 import re
@@ -56,9 +57,29 @@ def is_configured() -> bool:
     return bool(settings.influxdb_url)
 
 
+def _auth_header() -> Optional[str]:
+    """Basic auth when InfluxDB has HTTP auth on. Both settings or neither: a
+    half-configured credential would send an empty password and read as a
+    wrong one."""
+    user, password = settings.influxdb_auth_user, settings.influxdb_auth_password
+    if user and password:
+        token = base64.b64encode(f"{user}:{password.get_secret_value()}".encode()).decode()
+        return f"Basic {token}"
+    if user or password:
+        raise SinkError("TAKEBACK_INFLUXDB_AUTH_USER et TAKEBACK_INFLUXDB_AUTH_PASSWORD "
+                        "doivent être définis ensemble.")
+    return None
+
+
 def _post(path: str, params: Dict[str, str], body: bytes = b"") -> bytes:
     url = settings.influxdb_url.rstrip("/") + path + "?" + urlencode(params)
-    request = Request(url, data=body, method="POST", headers={"Content-Type": "text/plain; charset=utf-8"})
+    headers = {"Content-Type": "text/plain; charset=utf-8"}
+    auth = _auth_header()
+    if auth:
+        # A header, not `u=`/`p=` query parameters: those end up in any proxy's
+        # request line.
+        headers["Authorization"] = auth
+    request = Request(url, data=body, method="POST", headers=headers)
     try:
         with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
             return response.read()
