@@ -213,9 +213,11 @@ browser.
 | `TAKEBACK_LANG` | `fr` | Language the UI is served in when the request asks for none (`fr`, `en`) |
 | `TAKEBACK_INFLUXDB_URL` | — | InfluxDB 1.x to feed for Grafana (e.g. `http://influxdb:8086`); without it, no push |
 | `TAKEBACK_INFLUXDB_USER` | — | `user` tag of every point (shared-database convention) |
+| `TAKEBACK_INFLUXDB_AUTH_USER` | — | HTTP basic auth user, when InfluxDB has `auth-enabled` (set with the password, or neither) |
+| `TAKEBACK_INFLUXDB_AUTH_PASSWORD` | — | Its password (sent as a Basic header, never in the URL) |
 | `TAKEBACK_INFLUXDB_TZ` | `Europe/Paris` | Time zone of the `local_hour` / `local_weekday` fields |
 | `TAKEBACK_INFLUXDB_PUSH_HOUR` | `3` | Hour (UTC) of the daily full push |
-| `TAKEBACK_INFLUXDB_CREATE_DATABASES` | `true` | Create missing databases (year-long shards) |
+| `TAKEBACK_INFLUXDB_CREATE_DATABASES` | `true` | Create missing databases (year-long shards). `CREATE DATABASE` needs InfluxDB admin: with HTTP auth on, set this to `false` and create a new database as an admin first |
 
 ## REST API
 

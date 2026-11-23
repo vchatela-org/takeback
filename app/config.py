@@ -1,5 +1,6 @@
 from typing import Optional
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings
 
 
@@ -25,10 +26,16 @@ class Settings(BaseSettings):
     influxdb_url: Optional[str] = None
     # The `user` tag of every point, as in a shared database.
     influxdb_user: Optional[str] = None
+    # HTTP basic auth, when InfluxDB has it enabled (auth-enabled). Deliberately
+    # not influxdb_user: that one is a data tag. Both or neither.
+    influxdb_auth_user: Optional[str] = None
+    influxdb_auth_password: Optional[SecretStr] = None
     # local_hour / local_weekday fields: InfluxQL can't shift a time zone itself.
     influxdb_tz: str = "Europe/Paris"
     # Daily full push, at this hour (UTC).
     influxdb_push_hour: int = 3
+    # CREATE DATABASE needs InfluxDB admin: with HTTP auth on, leave this off
+    # and create a new database as an admin before the first push into it.
     influxdb_create_databases: bool = True
 
     class Config:
